@@ -20,7 +20,6 @@ import (
 	"github.com/gostafa/linuxdesktop/internal/adapter/wayland"
 	"github.com/gostafa/linuxdesktop/internal/adapter/x11"
 	"github.com/gostafa/linuxdesktop/internal/core"
-	"github.com/gostafa/linuxdesktop/internal/domain"
 	"github.com/gostafa/linuxdesktop/internal/port"
 	"github.com/gostafa/linuxdesktop/internal/rules"
 )
@@ -39,7 +38,7 @@ func DetectContext(ctx context.Context, opts ...Option) (*Environment, error) {
 		ctx = context.Background()
 	}
 
-	cfg := core.NewConfig(opts...)
+	cfg := newConfig(opts...)
 
 	if runtime.GOOS != goosLinux {
 		return elsewhere(), ErrNotLinux
@@ -50,7 +49,9 @@ func DetectContext(ctx context.Context, opts ...Option) (*Environment, error) {
 
 	deps := adapters(bus, cfg)
 
-	return core.New(&deps, cfg).Detect(ctx)
+	result, err := core.New(&deps, cfg).Detect(ctx)
+
+	return publicEnvironment(result), err
 }
 
 // elsewhere is the answer on a system that has no Linux desktop to describe: a
@@ -149,25 +150,25 @@ func IsHeadless() bool {
 }
 
 // WithTimeout bounds the whole detection run. The default is DefaultTimeout.
-func WithTimeout(d time.Duration) Option { return core.WithTimeout(d) }
+func WithTimeout(d time.Duration) Option { return func(c *Config) { c.Timeout = d } }
 
 // WithProbeTimeout bounds each individual probe, so one unresponsive server
 // cannot consume the whole budget. The default is DefaultProbeTimeout.
-func WithProbeTimeout(d time.Duration) Option { return core.WithProbeTimeout(d) }
+func WithProbeTimeout(d time.Duration) Option { return func(c *Config) { c.ProbeTimeout = d } }
 
 // WithSections selects which parts of the Environment to populate. Probes for
 // unselected sections never run.
-func WithSections(s Section) Option { return core.WithSections(s) }
+func WithSections(s Section) Option { return func(c *Config) { c.Sections = s } }
 
 // WithOpenGL asks the graphics drivers directly instead of reading their
 // manifests, which yields a true vendor, renderer and version at the cost of
 // initializing the GPU stack — tens of milliseconds, not microseconds.
-func WithOpenGL() Option { return core.WithNativeGL() }
+func WithOpenGL() Option { return func(c *Config) { c.NativeGL = true } }
 
 // WithProcessScan enables the /proc fallback for compositor detection. It only
 // affects the outcome when every stronger signal has failed, and a compositor
 // found this way is reported with ConfidenceLow.
-func WithProcessScan() Option { return core.WithProcessScan() }
+func WithProcessScan() Option { return func(c *Config) { c.ProcessScan = true } }
 
 // section runs a detection limited to one part of the Environment.
 func section(s Section) (*Environment, error) {
@@ -210,6 +211,4 @@ var (
 	_ port.PortalProbe  = (*portal.Probe)(nil)
 	_ port.ProcessProbe = (*procscan.Probe)(nil)
 	_ port.Bus          = (*dbusconn.Bus)(nil)
-
-	_ = domain.SectionAll
 )

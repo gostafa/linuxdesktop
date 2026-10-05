@@ -6,8 +6,6 @@ package linuxdesktop
 import (
 	"errors"
 	"time"
-
-	"github.com/gostafa/linuxdesktop/internal/core"
 )
 
 // ErrNotLinux is joined into the error from Detect when the program is not
@@ -20,8 +18,8 @@ var ErrNotLinux = errors.New("linuxdesktop: not running on Linux")
 // DefaultProbeTimeout bounds each probe within it, so one unresponsive server
 // cannot consume the entire budget.
 const (
-	DefaultTimeout      = core.DefaultTimeout
-	DefaultProbeTimeout = core.DefaultProbeTimeout
+	DefaultTimeout      = 2 * time.Second
+	DefaultProbeTimeout = 500 * time.Millisecond
 )
 
 // compile-time assertion that the exported defaults stay durations.
