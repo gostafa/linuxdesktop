@@ -5,6 +5,7 @@ package linuxdesktop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"time"
@@ -69,13 +70,14 @@ func DetectContext(ctx context.Context, opts ...Option) (*Environment, error) {
 	return result, nil
 }
 
-func detectOn(ctx context.Context, cfg *core.Config, goos string) (*Environment, error) {
+func detectOn(ctx context.Context, cfg *core.Config, goos string) (out *Environment, err error) {
 	if goos != goosLinux {
 		return elsewhere(), ErrNotLinux
 	}
 
 	bus := dbusconn.New(ctx)
-	defer bus.Close()
+
+	defer func() { err = errors.Join(err, bus.Close()) }()
 
 	deps := adapters(bus, cfg)
 

@@ -24,39 +24,50 @@ func New(bus port.Bus) Probe { return portalAt("", bus) }
 // interfaces the active backend exports.
 func portalAt(files string, bus port.Bus) Probe {
 	return func(ctx context.Context, env *domain.Env) (domain.PortalInfo, error) {
-		info := domain.PortalInfo{Backend: backend(files, env)}
+		var info domain.PortalInfo
 
-		if bus == nil {
-			return info, nil
-		}
+		info.Backend = backend(files, env)
 
-		owned, err := bus.HasOwner(ctx, port.SessionBus, busName)
-
-		info.Available = owned
-
-		if err != nil {
-			return info, fmt.Errorf(errDetectAvailability, err)
-		}
-
-		if !owned {
-			return info, nil
-		}
-
-		return availableInterfaces(ctx, &info, bus)
+		return detectPortal(ctx, &info, bus)
 	}
 }
 
-func availableInterfaces(
+func detectPortal(
 	ctx context.Context,
 	info *domain.PortalInfo,
 	bus port.Bus,
 ) (domain.PortalInfo, error) {
+	err := portalAvailability(ctx, info, bus)
+	if err != nil {
+		return *info, fmt.Errorf(errDetectAvailability, err)
+	}
+
+	if !info.Available {
+		return *info, nil
+	}
+
 	result, callErr := interfaces(ctx, info, bus)
 	if callErr != nil {
 		return result, fmt.Errorf(errDetectAvailability, callErr)
 	}
 
 	return result, nil
+}
+
+func portalAvailability(ctx context.Context, info *domain.PortalInfo, bus port.Bus) error {
+	if bus == nil {
+		return nil
+	}
+
+	owned, err := bus.HasOwner(ctx, port.SessionBus, busName)
+
+	info.Available = owned
+
+	if err != nil {
+		return fmt.Errorf("portal: check owner: %w", err)
+	}
+
+	return nil
 }
 
 // interfaces asks the running portal what it exports, which is the only way to
@@ -66,18 +77,14 @@ func interfaces(
 	info *domain.PortalInfo,
 	bus port.Bus,
 ) (domain.PortalInfo, error) {
-	raw, err := bus.Introspect(
-		ctx,
-		port.SessionBus,
-		&port.Object{Destination: busName, Path: objectPath},
-	)
+	object := port.Object{Destination: busName, Path: objectPath}
+
+	raw, err := bus.Introspect(ctx, port.SessionBus, &object)
 	if err != nil {
 		return *info, fmt.Errorf(errReadInterfaces, err)
 	}
 
-	var root node
-
-	err = xml.Unmarshal([]byte(raw), &root)
+	root, err := parseInterfaces(raw)
 	if err != nil {
 		return *info, fmt.Errorf(errReadInterfaces, err)
 	}
@@ -334,4 +341,15 @@ func desktopTokens(env *domain.Env) []string {
 	}
 
 	return strings.Split(env.CurrentDesktop, desktopSeparator)
+}
+
+func parseInterfaces(raw string) (node, error) {
+	var root node
+
+	err := xml.Unmarshal([]byte(raw), &root)
+	if err != nil {
+		return root, fmt.Errorf("portal: parse interfaces: %w", err)
+	}
+
+	return root, nil
 }

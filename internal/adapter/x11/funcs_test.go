@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -199,5 +201,14 @@ func TestCancellationWatcher(t *testing.T) {
 	errorConn := serverConnection(t, "error")
 	if textProperty(errorConn, 42, legacyProperty()) != "" {
 		t.Fatal("failed property returned text")
+	}
+}
+
+func TestOversizedAtom(t *testing.T) {
+	t.Parallel()
+	conn := serverConnection(t, "name")
+	name := strings.Repeat("a", math.MaxUint16+1)
+	if atomOf(internAtom(conn, name)) != zero {
+		t.Fatal("oversized atom was sent to the server")
 	}
 }

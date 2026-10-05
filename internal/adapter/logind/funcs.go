@@ -24,7 +24,10 @@ func New(bus port.Bus) Probe { return sessionAt("", bus) }
 // falling back to D-Bus when it is unreadable.
 func sessionAt(files string, bus port.Bus) Probe {
 	return func(ctx context.Context, env *domain.Env) (domain.SessionInfo, error) {
-		info := domain.SessionInfo{Type: domain.SessionTypeUnknown}
+		var info domain.SessionInfo
+
+		info.Type = domain.SessionTypeUnknown
+
 		found := fromMirror(files, &info, sessionID(files, env)) || locate(ctx, &info, bus)
 
 		applyEnv(&info, env)
@@ -42,6 +45,7 @@ func applyBus(ctx context.Context, info *domain.SessionInfo, bus port.Bus) error
 	props, err := bus.Properties(ctx, port.SystemBus, &port.PropertyQuery{
 		Object:    port.Object{Destination: busName, Path: sessionPath},
 		Interface: sessionIface,
+		Name:      noValue,
 	})
 	if err != nil {
 		return fmt.Errorf("logind: read session properties: %w", err)
@@ -275,12 +279,12 @@ func between(data []byte, prefix, suffix string) string {
 
 	rest := data[start+len(prefix):]
 
-	before, _, ok := bytes.Cut(rest, []byte(suffix))
-	if !ok {
+	parts := bytes.SplitN(rest, []byte(suffix), bracketParts)
+	if len(parts) != bracketParts {
 		return noValue
 	}
 
-	return string(before)
+	return string(parts[zero])
 }
 
 // idFromScan looks for a session owned by uid, preferring an active one.

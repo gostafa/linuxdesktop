@@ -3,7 +3,9 @@
 
 package domain
 
-import "github.com/gostafa/linuxdesktop/internal/schema"
+import (
+	"github.com/gostafa/linuxdesktop/internal/schema"
+)
 
 type (
 	// Section selects which parts of an Environment to populate. Sections are

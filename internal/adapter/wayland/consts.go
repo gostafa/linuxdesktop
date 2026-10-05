@@ -56,9 +56,7 @@ const (
 
 	// noValue is an unset environment variable or an unreadable string.
 	noValue = ""
-)
 
-const (
 	errDispatchEvent = "wayland: dispatch event: %w"
 	errReadEvents    = "wayland: read events: %w"
 	errQueryRegistry = "wayland: query registry: %w"

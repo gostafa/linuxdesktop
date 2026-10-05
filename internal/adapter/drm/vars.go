@@ -8,47 +8,51 @@ package drm
 // /usr/share/hwdata/pci.ids keeps vendor resolution free, and keeps working on
 // systems where hwdata is not installed.
 func vendorNames(key string) string {
-	switch key {
-	case "0x1002", "0x1022":
-		return vendorAMD
-	case vendorIDNvidia, "0x12d2":
-		return vendorNvidia
-	case "0x8086":
-		return "Intel"
-	case "0x1af4", "0x1b36":
-		return vendorRedHat
-	case "0x15ad":
-		return "VMware"
-	case "0x1234":
-		return "Bochs"
-	case "0x80ee":
-		return "Oracle"
-	case "0x1414":
-		return "Microsoft"
-	case "0x13b5":
-		return "ARM"
-	case "0x5143":
-		return "Qualcomm"
-	case "0x14e4":
-		return "Broadcom"
-	case "0x1d17":
-		return "Zhaoxin"
-	case "0x1ed5":
-		return "Moore Threads"
-	case "0x1e4b":
-		return "Innosilicon"
-	case "0x0014":
-		return "Loongson"
-	case "0x108e":
-		return "Sun"
-	case "0x1a03":
-		return "ASPEED"
-	case "0x102b":
-		return "Matrox"
-	case "0x1013":
-		return "Cirrus Logic"
-	default:
-		return noValue
+	tables := []map[string]string{vendorNamesTableA(), vendorNamesTableB(), vendorNamesTableC()}
+
+	for i := range tables {
+		if found, exists := tables[i][key]; exists {
+			return found
+		}
+	}
+
+	return noValue
+}
+
+func vendorNamesTableA() map[string]string {
+	return map[string]string{
+		"0x1002":       vendorAMD,
+		"0x1022":       vendorAMD,
+		vendorIDNvidia: vendorNvidia,
+		"0x12d2":       vendorNvidia,
+		"0x8086":       "Intel",
+		"0x1af4":       vendorRedHat,
+		"0x1b36":       vendorRedHat,
+		"0x15ad":       "VMware",
+		"0x1234":       "Bochs",
+		"0x80ee":       "Oracle",
+	}
+}
+
+func vendorNamesTableB() map[string]string {
+	return map[string]string{
+		"0x1414": "Microsoft",
+		"0x13b5": "ARM",
+		"0x5143": "Qualcomm",
+		"0x14e4": "Broadcom",
+		"0x1d17": "Zhaoxin",
+		"0x1ed5": "Moore Threads",
+		"0x1e4b": "Innosilicon",
+		"0x0014": "Loongson",
+		"0x108e": "Sun",
+		"0x1a03": "ASPEED",
+	}
+}
+
+func vendorNamesTableC() map[string]string {
+	return map[string]string{
+		"0x102b": "Matrox",
+		"0x1013": "Cirrus Logic",
 	}
 }
 

@@ -15,14 +15,14 @@ import (
 
 type (
 	// resultTarget binds a result's destination to its diagnostic label.
-	resultTarget[T any] struct {
-		value func(*collector) *T
+	resultTarget[C, T any] struct {
+		value func(*C) *T
 		name  string
 	}
 	// pairedTarget binds both destinations for a probe with two results.
-	pairedTarget[A, B any] struct {
-		first  func(*collector) *A
-		second func(*collector) *B
+	pairedTarget[C, A, B any] struct {
+		first  func(*C) *A
+		second func(*C) *B
 		name   string
 	}
 	// publication pairs the probe label with the synchronized update.

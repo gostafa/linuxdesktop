@@ -5,7 +5,9 @@
 
 package native
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestUnsupportedPlatform(t *testing.T) {
 	t.Parallel()

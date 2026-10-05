@@ -98,17 +98,6 @@ func finish(eng *detector, gather *collector) {
 	publish(eng, gather, &display)
 }
 
-// probeContext derives the per-probe deadline. The returned cancel must always
-// be called, which is why probes are spawned through a helper rather than
-// inline.
-func probeContext(ctx context.Context, eng *detector) (context.Context, context.CancelFunc) {
-	if eng.cfg.ProbeTimeout <= zero {
-		return context.WithCancel(ctx)
-	}
-
-	return context.WithTimeout(ctx, eng.cfg.ProbeTimeout)
-}
-
 // processSection is when the /proc fallback runs, which is never unless the
 // caller asked for it: an unselected section is one no probe fires for.
 func processSection(eng *detector) domain.Section {
@@ -181,89 +170,115 @@ func steps(eng *detector) []step {
 }
 
 func systemSteps(eng *detector) []step {
+	return []step{osStep(eng), processStep(eng)}
+}
+
+func osStep(eng *detector) step {
 	deps := &eng.deps
 
-	return []step{
-		{
-			plainProbe(
-				deps.OS,
-				port.OSProbe.OS,
-				resultTarget[domain.OSInfo]{value: osTarget, name: "operating system"},
-			),
-			domain.SectionOS,
-			deps.OS != nil,
-		},
-		{
-			plainProbe(
-				deps.Process,
-				port.ProcessProbe.Processes,
-				resultTarget[[]string]{value: processTarget, name: "processes"},
-			),
-			processSection(eng), deps.Process != nil,
-		},
-	}
+	return selectedStep(
+		plainProbe(
+			deps.OS,
+			port.OSProbe.OS,
+			namedTarget(osTarget, "operating system"),
+		),
+		domain.SectionOS,
+		deps.OS != nil,
+	)
+}
+
+func processStep(eng *detector) step {
+	deps := &eng.deps
+
+	return selectedStep(
+		plainProbe(
+			deps.Process,
+			port.ProcessProbe.Processes,
+			namedTarget(processTarget, "processes"),
+		),
+		processSection(eng), deps.Process != nil,
+	)
 }
 
 func sessionSteps(eng *detector) []step {
+	return []step{sessionStep(eng), desktopStep(eng), portalStep(eng)}
+}
+
+func sessionStep(eng *detector) step {
 	deps := &eng.deps
 
-	return []step{
-		{
-			envProbe(
-				deps.Session,
-				port.SessionProbe.Session,
-				resultTarget[domain.SessionInfo]{value: sessionTarget, name: "session"},
-			),
-			domain.SectionSession, deps.Session != nil,
-		},
-		{
-			envProbe(
-				deps.Desktop,
-				port.DesktopProbe.Desktop,
-				resultTarget[domain.DesktopInfo]{value: desktopTarget, name: "desktop"},
-			),
-			sectionDesktopProbes, deps.Desktop != nil,
-		},
-		{
-			envProbe(
-				deps.Portal,
-				port.PortalProbe.Portal,
-				resultTarget[domain.PortalInfo]{value: portalTarget, name: "portal"},
-			),
-			domain.SectionPortal,
-			deps.Portal != nil,
-		},
-	}
+	return selectedStep(
+		envProbe(
+			deps.Session,
+			port.SessionProbe.Session,
+			namedTarget(sessionTarget, "session"),
+		),
+		domain.SectionSession, deps.Session != nil,
+	)
+}
+
+func desktopStep(eng *detector) step {
+	deps := &eng.deps
+
+	return selectedStep(
+		envProbe(
+			deps.Desktop,
+			port.DesktopProbe.Desktop,
+			namedTarget(desktopTarget, "desktop"),
+		),
+		sectionDesktopProbes, deps.Desktop != nil,
+	)
+}
+
+func portalStep(eng *detector) step {
+	deps := &eng.deps
+
+	return selectedStep(
+		envProbe(
+			deps.Portal,
+			port.PortalProbe.Portal,
+			namedTarget(portalTarget, "portal"),
+		),
+		domain.SectionPortal,
+		deps.Portal != nil,
+	)
 }
 
 func displaySteps(eng *detector) []step {
+	return []step{x11Step(eng), waylandStep(eng)}
+}
+
+func x11Step(eng *detector) step {
 	deps := &eng.deps
 
-	return []step{
-		{
-			envProbe(
-				deps.X11,
-				port.X11Probe.X11,
-				resultTarget[*domain.X11Info]{value: x11Target, name: "X11"},
-			),
-			sectionDisplayProbes,
-			deps.X11 != nil,
-		},
-		{
-			envProbe(
-				deps.Wayland,
-				port.WaylandProbe.Wayland,
-				resultTarget[*domain.WaylandInfo]{value: waylandTarget, name: "Wayland"},
-			),
-			sectionDisplayProbes, deps.Wayland != nil,
-		},
-	}
+	return selectedStep(
+		envProbe(
+			deps.X11,
+			port.X11Probe.X11,
+			namedTarget(x11Target, "X11"),
+		),
+		sectionDisplayProbes,
+		deps.X11 != nil,
+	)
+}
+
+func waylandStep(eng *detector) step {
+	deps := &eng.deps
+
+	return selectedStep(
+		envProbe(
+			deps.Wayland,
+			port.WaylandProbe.Wayland,
+			namedTarget(waylandTarget, "Wayland"),
+		),
+		sectionDisplayProbes, deps.Wayland != nil,
+	)
 }
 
 func envProbe[P, T any](
 	probe P,
 	read func(P, context.Context, *domain.Env) (T, error),
-	target resultTarget[T],
+	target resultTarget[collector, T],
 ) probeFunc {
 	return func(ctx context.Context, gather *collector) error {
 		info, err := read(probe, ctx, &gather.sig.Env)
@@ -277,7 +292,7 @@ func envProbe[P, T any](
 func plainProbe[P, T any](
 	probe P,
 	read func(P, context.Context) (T, error),
-	target resultTarget[T],
+	target resultTarget[collector, T],
 ) probeFunc {
 	return func(ctx context.Context, gather *collector) error {
 		info, err := read(probe, ctx)
@@ -412,33 +427,45 @@ func storeResult(gather *collector, err error, result publication) error {
 }
 
 func graphicsSteps(eng *detector) []step {
+	return []step{gpuStep(eng), stackStep(eng)}
+}
+
+func gpuStep(eng *detector) step {
 	deps := &eng.deps
 
-	return []step{
-		{
-			pairedProbe(deps.GPUs, port.GPUProbe.GPUs, pairedTarget[[]domain.GPUInfo, string]{
+	return step{
+		pairedProbe(
+			deps.GPUs,
+			port.GPUProbe.GPUs,
+			pairedTarget[collector, []domain.GPUInfo, string]{
 				first: gpuTarget, second: primaryTarget, name: "GPUs",
-			}),
-			domain.SectionGraphics, deps.GPUs != nil,
-		},
-		{
-			pairedProbe(
-				deps.Stack,
-				port.StackProbe.Stack,
-				pairedTarget[domain.OpenGLInfo, domain.VulkanInfo]{
-					first: openglTarget, second: vulkanTarget, name: "graphics stack",
-				},
-			),
-			domain.SectionGraphics,
-			deps.Stack != nil,
-		},
+			},
+		),
+		domain.SectionGraphics,
+		deps.GPUs != nil,
+	}
+}
+
+func stackStep(eng *detector) step {
+	deps := &eng.deps
+
+	return step{
+		pairedProbe(
+			deps.Stack,
+			port.StackProbe.Stack,
+			pairedTarget[collector, domain.OpenGLInfo, domain.VulkanInfo]{
+				first: openglTarget, second: vulkanTarget, name: "graphics stack",
+			},
+		),
+		domain.SectionGraphics,
+		deps.Stack != nil,
 	}
 }
 
 func pairedProbe[P, A, B any](
 	probe P,
 	read func(P, context.Context) (A, B, error),
-	target pairedTarget[A, B],
+	target pairedTarget[collector, A, B],
 ) probeFunc {
 	return func(ctx context.Context, gather *collector) error {
 		left, right, err := read(probe, ctx)
@@ -457,9 +484,24 @@ func vulkanTarget(gather *collector) *domain.VulkanInfo { return &gather.out.Gra
 
 func timedProbe(eng *detector, run probeFunc) probeFunc {
 	return func(ctx context.Context, gather *collector) error {
-		probeCtx, cancel := probeContext(ctx, eng)
+		probeCtx, cancel := context.WithCancel(ctx)
+
+		if eng.cfg.ProbeTimeout > zero {
+			cancel()
+
+			probeCtx, cancel = context.WithTimeout(ctx, eng.cfg.ProbeTimeout)
+		}
+
 		defer cancel()
 
 		return run(probeCtx, gather)
 	}
+}
+
+func selectedStep(run probeFunc, section domain.Section, wired bool) step {
+	return step{run: run, section: section, wired: wired}
+}
+
+func namedTarget[T any](value func(*collector) *T, name string) resultTarget[collector, T] {
+	return resultTarget[collector, T]{value: value, name: name}
 }

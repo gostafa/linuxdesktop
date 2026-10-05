@@ -122,6 +122,10 @@ func TestConnectionLifetime(t *testing.T) {
 	if err = New(t.Context()).Close(); err != nil {
 		t.Fatal(err)
 	}
+	bus := Bus{release: func() error { return failure }}
+	if err = bus.Close(); !errors.Is(err, failure) {
+		t.Fatal("close error was lost", err)
+	}
 }
 
 func TestHostConnectionFailures(t *testing.T) {

@@ -4,6 +4,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -31,9 +32,13 @@ func TestOptionsAndDeadlines(t *testing.T) {
 		t.Fatal(out, err)
 	}
 	eng := detector{cfg: cfg}
-	ctx, cancel := probeContext(t.Context(), &eng)
-	defer cancel()
-	if _, ok := ctx.Deadline(); !ok {
-		t.Fatal("probe deadline absent")
+	err := timedProbe(&eng, func(ctx context.Context, gather *collector) error {
+		if _, ok := ctx.Deadline(); !ok {
+			t.Fatal("probe deadline absent")
+		}
+		return nil
+	})(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

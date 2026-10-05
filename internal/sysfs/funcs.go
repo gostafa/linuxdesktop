@@ -51,8 +51,7 @@ func Bytes(path string) ([]byte, error) {
 		return nil, fmt.Errorf("sysfs: read bytes: %w", err)
 	}
 
-	out := make([]byte, read)
-	copy(out, (*buf)[:read])
+	out := bytes.Clone((*buf)[:read])
 
 	return out, nil
 }
@@ -157,6 +156,17 @@ func readInto(path string, buf *[]byte) (int, error) {
 
 // drain reads file to its end, letting step decide when the buffer must grow.
 func drain(file io.Reader, buf *[]byte) (int, error) {
+	read, err := readChunks(file, buf)
+
+	callErr := readError(err)
+	if callErr != nil {
+		return read, fmt.Errorf("sysfs: drain file: %w", callErr)
+	}
+
+	return read, nil
+}
+
+func readChunks(file io.Reader, buf *[]byte) (int, error) {
 	read := zero
 
 	for {
@@ -165,12 +175,7 @@ func drain(file io.Reader, buf *[]byte) (int, error) {
 		read += got
 
 		if err != nil {
-			callErr := readError(err)
-			if callErr != nil {
-				return read, fmt.Errorf("sysfs: drain file: %w", callErr)
-			}
-
-			return read, nil
+			return read, fmt.Errorf("sysfs: read chunks: %w", err)
 		}
 
 		if got == zero {
@@ -246,8 +251,7 @@ func growBuffer(buf *[]byte, read int) {
 		return
 	}
 
-	grown := make([]byte, len(*buf)*bufferGrowth)
-	copy(grown, *buf)
+	grown := append(*buf, make([]byte, len(*buf)*(bufferGrowth-1))...)
 
 	*buf = grown
 }

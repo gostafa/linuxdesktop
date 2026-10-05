@@ -3,7 +3,9 @@
 
 package port
 
-import "context"
+import (
+	"context"
+)
 
 type (
 	// BusKind selects one of the two D-Bus instances a desktop session has.

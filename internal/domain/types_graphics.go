@@ -3,7 +3,9 @@
 
 package domain
 
-import "github.com/gostafa/linuxdesktop/internal/schema"
+import (
+	"github.com/gostafa/linuxdesktop/internal/schema"
+)
 
 type (
 	// GraphicsInfo describes the GPUs and the client-side graphics stack.

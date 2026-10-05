@@ -4,6 +4,9 @@
 package logind
 
 const (
+	// bracketParts is the pair of segments around a closing marker.
+	bracketParts = 2
+
 	// Filesystem sources.
 	dirSessions = "/run/systemd/sessions"
 	pathCgroup  = "/proc/self/cgroup"

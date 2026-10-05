@@ -32,6 +32,6 @@ type (
 	// driverManifest decodes a driver entry shared by EGL and Vulkan files.
 	driverManifest[D any] struct {
 		// ICD driver entry shared by EGL and Vulkan manifests.
-		ICD D `json:"ICD"`
+		ICD D `json:"icd"`
 	}
 )

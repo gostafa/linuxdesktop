@@ -48,3 +48,15 @@ func TestPublicSections(t *testing.T) {
 		t.Fatal("default graphics probe missing")
 	}
 }
+
+func TestPublicNilContextAndOS(t *testing.T) {
+	t.Parallel()
+	result, err := DetectContext(nil, WithSections(SectionOS))
+	if result == nil || (runtime.GOOS != goosLinux && !errors.Is(err, ErrNotLinux)) {
+		t.Fatal(result, err)
+	}
+	osInfo, _ := OS()
+	if runtime.GOOS == goosLinux && osInfo.Kernel == "" {
+		t.Fatal("operating system result lost")
+	}
+}

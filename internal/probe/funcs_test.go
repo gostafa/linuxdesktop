@@ -40,9 +40,16 @@ func TestDelegates(t *testing.T) {
 			t.Fatal(got, err)
 		}
 	}
+	failure = nil
+	for _, check := range checks {
+		if got, err := check(); got != 7 || err != nil {
+			t.Fatal("successful probe changed its result", got, err)
+		}
+	}
 	if got := SnapshotFunc[int](func() int { return 7 }).Snapshot(); got != 7 {
 		t.Fatal(got)
 	}
+	failure = errors.New("paired failure")
 	gpu := GPUFunc[int](func(context.Context) (int, string, error) { return 7, "primary", failure })
 	if got, primary, err := gpu.GPUs(
 		ctx,
@@ -57,6 +64,13 @@ func TestDelegates(t *testing.T) {
 		ctx,
 	); got != 7 || version != "vulkan" ||
 		!errors.Is(err, failure) {
+		t.Fatal(got, version, err)
+	}
+	failure = nil
+	if got, primary, err := gpu.GPUs(ctx); got != 7 || primary != "primary" || err != nil {
+		t.Fatal(got, primary, err)
+	}
+	if got, version, err := stack.Stack(ctx); got != 7 || version != "vulkan" || err != nil {
 		t.Fatal(got, version, err)
 	}
 }

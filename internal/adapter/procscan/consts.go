@@ -22,8 +22,6 @@ const (
 
 	// noValue is a process that has gone away between the listing and the read.
 	noValue = ""
-)
 
-const (
 	errListProcesses = "procscan: list processes: %w"
 )

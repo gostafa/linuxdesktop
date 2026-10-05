@@ -3,7 +3,9 @@
 
 package probe
 
-import "context"
+import (
+	"context"
+)
 
 type (
 	// SnapshotFunc implements Snapshot by calling the supplied function.

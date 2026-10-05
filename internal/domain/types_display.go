@@ -3,7 +3,9 @@
 
 package domain
 
-import "github.com/gostafa/linuxdesktop/internal/schema"
+import (
+	"github.com/gostafa/linuxdesktop/internal/schema"
+)
 
 type (
 	// DisplayProtocol is the windowing protocol the process should speak.

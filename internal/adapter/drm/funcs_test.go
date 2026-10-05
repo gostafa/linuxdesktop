@@ -42,10 +42,7 @@ func TestGPUEnumeration(t *testing.T) {
 
 	t.Parallel()
 	files := t.TempDir()
-	if gpus, primary, err := gpus(
-		files,
-		t.Context(),
-	); err != nil || len(gpus) != 0 ||
+	if gpus, primary, err := gpus(t.Context(), files); err != nil || len(gpus) != 0 ||
 		primary != "" {
 		t.Fatal(gpus, primary, err)
 	}
@@ -64,7 +61,7 @@ func TestGPUEnumeration(t *testing.T) {
 	write(t, files, filepath.Join(classDir, "renderD129", "unused"), "")
 	write(t, files, filepath.Join(classDir, "card0-HDMI-A-1", "unused"), "")
 	write(t, files, pciIDsPaths[0], "# comment\n8086 Intel\n\t1234 Fixture GPU\n")
-	gpus, primary, err := gpus(files, t.Context())
+	gpus, primary, err := gpus(t.Context(), files)
 	if err != nil || len(gpus) != 2 || primary != "card0" || gpus[0].Model != "Fixture GPU" ||
 		gpus[0].RenderDevice != "/dev/dri/renderD128" ||
 		gpus[0].Driver != "i915" ||
@@ -80,6 +77,9 @@ func TestGPUEnumeration(t *testing.T) {
 }
 
 func TestGPUModelsAndClassification(t *testing.T) {
+	if vendorNames("unrecognized") != noValue {
+		t.Fatal("unknown vendor acquired a name")
+	}
 	pciIDsPaths := pciIDsPaths()
 
 	t.Parallel()
@@ -159,5 +159,14 @@ func TestPCIScan(t *testing.T) {
 	failure := io.ErrUnexpectedEOF
 	if err := run(newScan(), failingReader{failure}); !errors.Is(err, failure) {
 		t.Fatal(err)
+	}
+}
+
+func TestGPUEnumerationError(t *testing.T) {
+	t.Parallel()
+	files := t.TempDir()
+	write(t, files, classDir, "not a directory")
+	if _, _, err := gpus(t.Context(), files); err == nil {
+		t.Fatal("invalid DRM directory was treated as an absent GPU")
 	}
 }

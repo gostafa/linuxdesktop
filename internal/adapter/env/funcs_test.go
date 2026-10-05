@@ -3,7 +3,9 @@
 
 package env
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestSnapshot(t *testing.T) {
 	t.Setenv(keyUser, "alice")

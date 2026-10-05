@@ -3,7 +3,9 @@
 
 package schema
 
-import "time"
+import (
+	"time"
+)
 
 type (
 	// Config is the shared Config layout, parameterized by its component types.

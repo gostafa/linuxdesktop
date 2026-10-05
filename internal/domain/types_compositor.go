@@ -3,7 +3,9 @@
 
 package domain
 
-import "github.com/gostafa/linuxdesktop/internal/schema"
+import (
+	"github.com/gostafa/linuxdesktop/internal/schema"
+)
 
 type (
 	// CompositorKind is a recognized window manager or Wayland compositor.

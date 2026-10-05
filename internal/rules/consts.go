@@ -24,9 +24,7 @@ const (
 	// extraTokens is how many tokens beyond $XDG_CURRENT_DESKTOP can name a
 	// desktop: $XDG_SESSION_DESKTOP and $DESKTOP_SESSION.
 	extraTokens = 2
-)
 
-const (
 	nameGnomeshell   = "gnomeshell"
 	nameHyprland     = "Hyprland"
 	nameSway         = "sway"

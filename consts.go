@@ -25,8 +25,8 @@ const (
 	SectionAll Section = SectionOS | SectionSession | SectionDisplay |
 		SectionDesktop | SectionCompositor | SectionGraphics | SectionPortal
 
-	// noSections is the empty selection that receives the default section mask.
-	noSections Section = 0
+	// zero is an empty selection or the initial length of an accumulating slice.
+	zero = 0
 
 	// SessionTypeUnknown indicates an unidentified session type. The session
 	// constants mirror logind's TYPE= and $XDG_SESSION_TYPE.

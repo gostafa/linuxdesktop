@@ -6,6 +6,7 @@ package x11
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/gostafa/linuxdesktop/internal/domain"
@@ -40,7 +41,7 @@ func Available(env *domain.Env) bool {
 func x11(ctx context.Context, env *domain.Env) (*domain.X11Info, error) {
 	result, err := queryDisplay(ctx, env, xgb.NewConnDisplay)
 	if err != nil {
-		return result, fmt.Errorf("x11: query display: %w", err)
+		return nil, fmt.Errorf("x11: query display: %w", err)
 	}
 
 	return result, nil
@@ -63,10 +64,8 @@ func queryDisplay(
 
 	// xgb's Reply blocks indefinitely, so cancellation is expressed by closing
 	// the connection out from under it.
-	stop := make(chan struct{})
+	stop := watchConnection(ctx, conn)
 	defer close(stop)
-
-	go watch(ctx, conn, stop)
 
 	return describe(conn, env.Display), nil
 }
@@ -268,7 +267,12 @@ func internAtoms(conn *xgb.Conn) atomCookies {
 }
 
 func internAtom(conn *xgb.Conn, name string) xproto.InternAtomCookie {
-	return xproto.InternAtom(conn, true, uint16(len(name)), name)
+	length := len(name)
+	if length > math.MaxUint16 {
+		return xproto.InternAtomCookie{Cookie: conn.NewCookie(true, false)}
+	}
+
+	return xproto.InternAtom(conn, true, uint16(length), name)
 }
 
 // atomOf resolves an InternAtom cookie, yielding zero when the atom does not
@@ -280,4 +284,12 @@ func atomOf(cookie xproto.InternAtomCookie) xproto.Atom {
 	}
 
 	return reply.Atom
+}
+
+func watchConnection(ctx context.Context, conn *xgb.Conn) chan struct{} {
+	stop := make(chan struct{})
+
+	go watch(ctx, conn, stop)
+
+	return stop
 }

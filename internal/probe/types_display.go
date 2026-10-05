@@ -3,7 +3,9 @@
 
 package probe
 
-import "context"
+import (
+	"context"
+)
 
 type (
 	// X11Func implements X11 by calling the supplied function.

@@ -20,16 +20,20 @@ import (
 
 // New returns a DRM probe.
 func New() Probe {
-	return func(ctx context.Context) ([]domain.GPUInfo, string, error) { return gpus("", ctx) }
+	return func(ctx context.Context) ([]domain.GPUInfo, string, error) { return gpus(ctx, "") }
 }
 
 // GPUs enumerates the DRM cards and returns them along with the id of the
 // primary one, which is the card the firmware posted. A machine with no DRM
 // devices is not an error: that is what a headless server looks like.
-func gpus(files string, _ context.Context) ([]domain.GPUInfo, string, error) {
+func gpus(_ context.Context, files string) ([]domain.GPUInfo, string, error) {
 	entries, err := sysfs.DirNames(sysfs.Path(files, classDir))
-	if err != nil {
+	if errors.Is(err, os.ErrNotExist) {
 		return nil, noValue, nil
+	}
+
+	if err != nil {
+		return nil, noValue, fmt.Errorf("drm: enumerate cards: %w", err)
 	}
 
 	slices.Sort(entries)
@@ -161,6 +165,8 @@ func describe(files, entry string, nodes map[string]string) (domain.GPUInfo, boo
 		DeviceID:   sysfs.Trimmed(sysfs.Path(files, filepath.Join(base, attrDevice))),
 		PCIAddress: sysfs.LinkBase(sysfs.Path(files, filepath.Join(base, linkDevice))),
 		DRMDevice:  filepath.Join(deviceDir, entry),
+		Vendor:     noValue, Model: noValue, Driver: noValue, RenderDevice: noValue,
+		Integrated: false, Discrete: false,
 	}
 
 	applyUevent(files, &gpu, base)
@@ -357,7 +363,8 @@ func openPCIIDs(files string) *os.File {
 	pciIDsPaths := pciIDsPaths()
 
 	for i := range pciIDsPaths {
-		if file, err := os.Open(sysfs.Path(files, pciIDsPaths[i])); err == nil {
+		file, err := os.Open(sysfs.Path(files, pciIDsPaths[i]))
+		if err == nil {
 			return file
 		}
 	}

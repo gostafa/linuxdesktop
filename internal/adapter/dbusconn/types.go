@@ -23,7 +23,7 @@ type (
 	// connectionBus separates bus operations from connection selection and lifetime.
 	connectionBus[K any, C connection] struct {
 		connect func(K) (C, error)
-		close   func() error
+		release func() error
 	}
 
 	// connections caches the result of opening each private connection once.

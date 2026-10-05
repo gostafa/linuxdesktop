@@ -8,6 +8,15 @@ import (
 )
 
 type (
+	// envFingerprint binds an environment value to its compositor identity.
+	envFingerprint = environmentFingerprint[domain.Env, match]
+
+	// environmentFingerprint describes evidence supplied by an environment snapshot.
+	environmentFingerprint[E, M any] struct {
+		value func(*E) string
+		match M
+	}
+
 	// match is one identified compositor: the enum value plus the name actually
 	// observed, which matters for the compositors that have no enum value.
 	match = identity[domain.CompositorKind]

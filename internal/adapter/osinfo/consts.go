@@ -26,9 +26,7 @@ const (
 
 	// noValue is an unreadable attribute or a field os-release did not carry.
 	noValue = ""
-)
 
-const (
 	archMips    = "mips"
 	archMips64  = "mips64"
 	archPpc64   = "ppc64"

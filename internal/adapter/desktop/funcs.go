@@ -33,14 +33,15 @@ func version(
 	info *domain.DesktopInfo,
 	bus port.Bus,
 ) string {
-	switch info.Environment {
-	case domain.DesktopGNOME:
+	if info.Environment == domain.DesktopGNOME {
 		return gnomeVersion(ctx, bus)
-	case domain.DesktopKDE:
-		return info.Version
-	default:
-		return ""
 	}
+
+	if info.Environment == domain.DesktopKDE {
+		return info.Version
+	}
+
+	return ""
 }
 
 func gnomeVersion(ctx context.Context, bus port.Bus) string {
@@ -48,15 +49,12 @@ func gnomeVersion(ctx context.Context, bus port.Bus) string {
 		return ""
 	}
 
-	value, err := bus.Property(
-		ctx,
-		port.SessionBus,
-		&port.PropertyQuery{
-			Object:    port.Object{Destination: shellName, Path: shellPath},
-			Interface: shellName,
-			Name:      shellVersion,
-		},
-	)
+	query := port.PropertyQuery{
+		Object:    port.Object{Destination: shellName, Path: shellPath},
+		Interface: shellName, Name: shellVersion,
+	}
+
+	value, err := bus.Property(ctx, port.SessionBus, &query)
 	if err != nil {
 		return ""
 	}

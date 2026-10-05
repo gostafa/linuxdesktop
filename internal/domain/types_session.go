@@ -3,7 +3,9 @@
 
 package domain
 
-import "github.com/gostafa/linuxdesktop/internal/schema"
+import (
+	"github.com/gostafa/linuxdesktop/internal/schema"
+)
 
 type (
 	// SessionType is the kind of seat session the process is attached to.

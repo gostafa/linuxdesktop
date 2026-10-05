@@ -14,10 +14,8 @@ const (
 	vkNoVariant    uint32  = 0
 	libEGL                 = "libEGL.so.1"
 	libVulkan              = "libvulkan.so.1"
-)
 
-// EGL enumerants.
-const (
+	// EGL enumerants.
 	eglDefaultDisplay uintptr = 0
 	eglNoDisplay      uintptr = 0
 	eglNoSurface      uintptr = 0
@@ -36,18 +34,14 @@ const (
 	eglOpenGLES2Bit   int32 = 0x0004
 	eglContextVersion int32 = 0x3098
 	eglNone           int32 = 0x3038
-)
 
-// OpenGL enumerants.
-const (
+	// OpenGL enumerants.
 	glVendor   uint32 = 0x1F00
 	glRenderer uint32 = 0x1F01
 	glVersion  uint32 = 0x1F02
-)
 
-// Vulkan. vkEnumerateInstanceVersion is absent from a 1.0 loader, where the
-// answer is 1.0.0 by definition.
-const (
+	// Vulkan. vkEnumerateInstanceVersion is absent from a 1.0 loader, where the
+	// answer is 1.0.0 by definition.
 	vkSuccess              int32 = 0
 	vkEnumerateVersionName       = "vkEnumerateInstanceVersion"
 	vkBaseVersion                = "1.0.0"

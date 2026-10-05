@@ -18,11 +18,13 @@ func New(base context.Context) *Bus {
 		base = context.Background()
 	}
 
-	cache := &connections{open: openConnection}
+	cache := new(connections)
+
+	cache.open = openConnection
 
 	return &Bus{
 		connect: func(kind port.BusKind) (*dbus.Conn, error) { return connect(base, cache, kind) },
-		close:   func() error { return closeConnections(cache) },
+		release: func() error { return closeConnections(cache) },
 	}
 }
 
@@ -128,7 +130,7 @@ func variantValues(raw map[string]dbus.Variant) map[string]any {
 
 // Close releases whichever connections were actually opened.
 func closeConnections(cache *connections) error {
-	var errs []error
+	errs := make([]error, noEntries, len(cache.conns))
 
 	for i := range cache.conns {
 		if cache.conns[i] == nil {
@@ -148,31 +150,31 @@ func closeConnections(cache *connections) error {
 func connect(base context.Context, cache *connections, kind port.BusKind) (*dbus.Conn, error) {
 	i := int(kind)
 	if i >= len(cache.conns) {
-		return nil, errors.New("linuxdesktop: unknown bus kind")
+		return nil, ErrBusKind
 	}
 
 	cache.once[i].Do(func() {
 		cache.conns[i], cache.errs[i] = cache.open(base, kind)
 	})
 
-	return cache.conns[i], cache.errs[i]
+	if cache.errs[i] != nil {
+		return nil, fmt.Errorf("dbusconn: cached connection: %w", cache.errs[i])
+	}
+
+	return cache.conns[i], nil
 }
 
 func openConnection(base context.Context, kind port.BusKind) (*dbus.Conn, error) {
 	opt := dbus.WithContext(base)
+	connect := dbus.ConnectSessionBus
 
 	if kind == port.SystemBus {
-		conn, err := dbus.ConnectSystemBus(opt)
-		if err != nil {
-			return conn, fmt.Errorf("dbusconn: connect system bus: %w", err)
-		}
-
-		return conn, nil
+		connect = dbus.ConnectSystemBus
 	}
 
-	conn, err := dbus.ConnectSessionBus(opt)
+	conn, err := connect(opt)
 	if err != nil {
-		return conn, fmt.Errorf("dbusconn: connect session bus: %w", err)
+		return nil, fmt.Errorf("dbusconn: connect bus: %w", err)
 	}
 
 	return conn, nil
@@ -180,7 +182,7 @@ func openConnection(base context.Context, kind port.BusKind) (*dbus.Conn, error)
 
 // Close releases the private connections owned by this bus.
 func (bus *connectionBus[K, C]) Close() error {
-	err := bus.close()
+	err := bus.release()
 	if err != nil {
 		return fmt.Errorf("dbusconn: close connections: %w", err)
 	}

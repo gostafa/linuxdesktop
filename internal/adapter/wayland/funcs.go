@@ -111,24 +111,40 @@ func dispatch(reg *registry, event *wireEvent) error {
 }
 
 func dispatchControl(object, opcode uint32, body []byte) error {
-	switch object {
-	case objCallback:
-		err := complete(opcode)
-		if err != nil {
-			return fmt.Errorf("wayland: callback event: %w", err)
-		}
+	handlers := map[uint32]func(uint32, []byte) error{
+		objCallback: callbackEvent,
+		wireOne:     displayEvent,
+	}
+	handler, ok := handlers[object]
 
-		return nil
-	case wireOne:
-		err := failure(opcode, body)
-		if err != nil {
-			return fmt.Errorf("wayland: display event: %w", err)
-		}
-
-		return nil
-	default:
+	if !ok {
 		return nil
 	}
+
+	err := handler(opcode, body)
+	if err != nil {
+		return fmt.Errorf("wayland: control event %d: %w", object, err)
+	}
+
+	return nil
+}
+
+func callbackEvent(opcode uint32, _ []byte) error {
+	err := complete(opcode)
+	if err != nil {
+		return fmt.Errorf("wayland: callback event: %w", err)
+	}
+
+	return nil
+}
+
+func displayEvent(opcode uint32, body []byte) error {
+	err := failure(opcode, body)
+	if err != nil {
+		return fmt.Errorf("wayland: display event: %w", err)
+	}
+
+	return nil
 }
 
 // grow doubles the buffer when it is full, refusing to pass the cap that keeps
@@ -142,10 +158,7 @@ func grow(reg *registry) error {
 		return ErrProtocol
 	}
 
-	grown := make([]byte, len(reg.buf)+len(reg.buf))
-	copy(grown, reg.buf)
-
-	reg.buf = grown
+	reg.buf = append(reg.buf, make([]byte, len(reg.buf))...)
 
 	return nil
 }
@@ -340,17 +353,18 @@ func putRequest(frame []byte, opcode, newID uint32) {
 func readGlobals(reader io.Reader) ([]domain.WaylandGlobal, error) {
 	reg := newRegistry()
 
-	for {
-		err := step(reg, reader)
-		if err != nil {
-			callErr := registryError(err)
-			if callErr != nil {
-				return reg.globals, fmt.Errorf("wayland: read registry: %w", callErr)
-			}
+	var err error
 
-			return reg.globals, nil
-		}
+	for err == nil {
+		err = step(reg, reader)
 	}
+
+	callErr := registryError(err)
+	if callErr != nil {
+		return reg.globals, fmt.Errorf("wayland: read registry: %w", callErr)
+	}
+
+	return reg.globals, nil
 }
 
 // finished turns the sentinel that ends a complete listing back into success.
@@ -415,7 +429,9 @@ func decodeGlobal(body []byte) (domain.WaylandGlobal, bool) {
 	// A padded length below one word means an empty interface name, which no
 	// real global has.
 	if padded < wordBytes || padded+wordBytes > len(rest) {
-		return domain.WaylandGlobal{}, false
+		var empty domain.WaylandGlobal
+
+		return empty, false
 	}
 
 	return domain.WaylandGlobal{
@@ -436,8 +452,8 @@ func parseError(body []byte) error {
 	length := int(order.Uint32(body[wordBytes+wordBytes:]))
 
 	return fmt.Errorf(
-		"linuxdesktop: wayland protocol error %d: %s",
-		code, text(body[requestSize:], length),
+		"%w %d: %s",
+		ErrProtocol, code, text(body[requestSize:], length),
 	)
 }
 

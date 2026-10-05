@@ -15,7 +15,7 @@ func (run SnapshotFunc[T]) Snapshot() T { return run() }
 func (run OSFunc[T]) OS(ctx context.Context) (T, error) {
 	result, err := run(ctx)
 	if err != nil {
-		return result, fmt.Errorf("probe: run: %w", err)
+		return result, fmt.Errorf(errRun, err)
 	}
 
 	return result, nil
@@ -28,7 +28,7 @@ func (run SessionFunc[E, T]) Session(
 ) (T, error) {
 	result, err := run(ctx, env)
 	if err != nil {
-		return result, fmt.Errorf("probe: run: %w", err)
+		return result, fmt.Errorf(errRun, err)
 	}
 
 	return result, nil
@@ -41,7 +41,7 @@ func (run DesktopFunc[E, T]) Desktop(
 ) (T, error) {
 	result, err := run(ctx, env)
 	if err != nil {
-		return result, fmt.Errorf("probe: run: %w", err)
+		return result, fmt.Errorf(errRun, err)
 	}
 
 	return result, nil
@@ -51,7 +51,7 @@ func (run DesktopFunc[E, T]) Desktop(
 func (run X11Func[E, T]) X11(ctx context.Context, env *E) (T, error) {
 	result, err := run(ctx, env)
 	if err != nil {
-		return result, fmt.Errorf("probe: run: %w", err)
+		return result, fmt.Errorf(errRun, err)
 	}
 
 	return result, nil
@@ -64,7 +64,7 @@ func (run WaylandFunc[E, T]) Wayland(
 ) (T, error) {
 	result, err := run(ctx, env)
 	if err != nil {
-		return result, fmt.Errorf("probe: run: %w", err)
+		return result, fmt.Errorf(errRun, err)
 	}
 
 	return result, nil
@@ -94,7 +94,7 @@ func (run StackFunc[A, B]) Stack(ctx context.Context) (opengl A, vulkan B, err e
 func (run PortalFunc[E, T]) Portal(ctx context.Context, env *E) (T, error) {
 	result, err := run(ctx, env)
 	if err != nil {
-		return result, fmt.Errorf("probe: run: %w", err)
+		return result, fmt.Errorf(errRun, err)
 	}
 
 	return result, nil
@@ -104,7 +104,7 @@ func (run PortalFunc[E, T]) Portal(ctx context.Context, env *E) (T, error) {
 func (run DetectFunc[T]) Detect(ctx context.Context) (T, error) {
 	result, err := run(ctx)
 	if err != nil {
-		return result, fmt.Errorf("probe: run: %w", err)
+		return result, fmt.Errorf(errRun, err)
 	}
 
 	return result, nil

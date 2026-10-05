@@ -3,7 +3,9 @@
 
 package probe
 
-import "context"
+import (
+	"context"
+)
 
 type (
 	// GPUFunc implements GPUs by calling the supplied function.

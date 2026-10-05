@@ -3,7 +3,9 @@
 
 package linuxdesktop
 
-import "time"
+import (
+	"time"
+)
 
 type (
 	// ConfigData is the shared ConfigData layout, parameterized by its component types.

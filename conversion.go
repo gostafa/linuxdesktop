@@ -38,7 +38,7 @@ func publicConfig(opts []Option) Config {
 		}
 	}
 
-	if cfg.Sections == noSections {
+	if cfg.Sections == zero {
 		cfg.Sections = SectionAll
 	}
 
@@ -143,11 +143,11 @@ func publicWayland(source *domain.WaylandInfo) *WaylandInfo {
 		return nil
 	}
 
-	out := &WaylandInfo{Display: source.Display, SocketFD: source.SocketFD}
+	out := &WaylandInfo{Display: source.Display, SocketFD: source.SocketFD, Globals: nil}
 	if source.Globals != nil {
-		out.Globals = make([]WaylandGlobal, len(source.Globals))
+		out.Globals = make([]WaylandGlobal, zero, len(source.Globals))
 		for i := range source.Globals {
-			out.Globals[i] = WaylandGlobal(source.Globals[i])
+			out.Globals = append(out.Globals, WaylandGlobal(source.Globals[i]))
 		}
 	}
 
@@ -159,9 +159,9 @@ func publicGPUs(source []domain.GPUInfo) []GPUInfo {
 		return nil
 	}
 
-	out := make([]GPUInfo, len(source))
+	out := make([]GPUInfo, zero, len(source))
 	for i := range source {
-		out[i] = GPUInfo(source[i])
+		out = append(out, GPUInfo(source[i]))
 	}
 
 	return out

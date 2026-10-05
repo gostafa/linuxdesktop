@@ -25,17 +25,15 @@ func snapshot() domain.Env {
 }
 
 func readSession(snapshot *domain.Env) {
-	*snapshot = domain.Env{
-		SessionID:      os.Getenv(keySessionID),
-		SessionType:    os.Getenv(keySessionType),
-		SessionDesktop: os.Getenv(keySessionDesktop),
-		SessionClass:   os.Getenv(keySessionClass),
-		CurrentDesktop: os.Getenv(keyCurrentDesktop),
-		DesktopSession: os.Getenv(keyDesktopSession),
-		User:           firstNonEmpty(os.Getenv(keyUser), os.Getenv(keyLogname)),
-		Seat:           os.Getenv(keySeat),
-		VTNR:           os.Getenv(keyVTNR),
-	}
+	snapshot.SessionID = os.Getenv(keySessionID)
+	snapshot.SessionType = os.Getenv(keySessionType)
+	snapshot.SessionDesktop = os.Getenv(keySessionDesktop)
+	snapshot.SessionClass = os.Getenv(keySessionClass)
+	snapshot.CurrentDesktop = os.Getenv(keyCurrentDesktop)
+	snapshot.DesktopSession = os.Getenv(keyDesktopSession)
+	snapshot.User = firstNonEmpty(os.Getenv(keyUser), os.Getenv(keyLogname))
+	snapshot.Seat = os.Getenv(keySeat)
+	snapshot.VTNR = os.Getenv(keyVTNR)
 }
 
 func readPaths(snapshot *domain.Env) {
