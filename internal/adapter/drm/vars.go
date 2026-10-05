@@ -7,41 +7,61 @@ package drm
 // virtual devices a desktop is likely to run under. Using a table instead of
 // /usr/share/hwdata/pci.ids keeps vendor resolution free, and keeps working on
 // systems where hwdata is not installed.
-var vendorNames = map[string]string{
-	"0x1002": "AMD",
-	"0x1022": "AMD",
-	"0x10de": "NVIDIA",
-	"0x12d2": "NVIDIA",
-	"0x8086": "Intel",
-	"0x1af4": "Red Hat",
-	"0x1b36": "Red Hat",
-	"0x15ad": "VMware",
-	"0x1234": "Bochs",
-	"0x80ee": "Oracle",
-	"0x1414": "Microsoft",
-	"0x13b5": "ARM",
-	"0x5143": "Qualcomm",
-	"0x14e4": "Broadcom",
-	"0x1d17": "Zhaoxin",
-	"0x1ed5": "Moore Threads",
-	"0x1e4b": "Innosilicon",
-	"0x0014": "Loongson",
-	"0x108e": "Sun",
-	"0x1a03": "ASPEED",
-	"0x102b": "Matrox",
-	"0x1013": "Cirrus Logic",
+func vendorNames(key string) string {
+	switch key {
+	case "0x1002", "0x1022":
+		return vendorAMD
+	case vendorIDNvidia, "0x12d2":
+		return vendorNvidia
+	case "0x8086":
+		return "Intel"
+	case "0x1af4", "0x1b36":
+		return vendorRedHat
+	case "0x15ad":
+		return "VMware"
+	case "0x1234":
+		return "Bochs"
+	case "0x80ee":
+		return "Oracle"
+	case "0x1414":
+		return "Microsoft"
+	case "0x13b5":
+		return "ARM"
+	case "0x5143":
+		return "Qualcomm"
+	case "0x14e4":
+		return "Broadcom"
+	case "0x1d17":
+		return "Zhaoxin"
+	case "0x1ed5":
+		return "Moore Threads"
+	case "0x1e4b":
+		return "Innosilicon"
+	case "0x0014":
+		return "Loongson"
+	case "0x108e":
+		return "Sun"
+	case "0x1a03":
+		return "ASPEED"
+	case "0x102b":
+		return "Matrox"
+	case "0x1013":
+		return "Cirrus Logic"
+	default:
+		return noValue
+	}
 }
 
 // alwaysDiscrete lists vendors whose PCI GPUs are discrete by construction.
 // NVIDIA's integrated parts (Tegra) are not PCI devices, so a PCI NVIDIA GPU
 // is always a discrete card regardless of which bus it sits on.
-var alwaysDiscrete = map[string]bool{
-	"0x10de": true,
-}
+func alwaysDiscrete(key string) bool { return key == vendorIDNvidia }
 
 // pciIDsPaths are the places distributions install the hwdata device list.
-var pciIDsPaths = []string{
-	"/usr/share/hwdata/pci.ids",
-	"/usr/share/misc/pci.ids",
-	"/usr/share/pci.ids",
+func pciIDsPaths() []string {
+	return []string{
+		"/usr/share/hwdata/pci.ids",
+		"/usr/share/misc/pci.ids",
+		"/usr/share/pci.ids",
+	}
 }

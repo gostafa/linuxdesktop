@@ -8,16 +8,29 @@ import (
 	"sync"
 
 	"github.com/godbus/dbus/v5"
+	"github.com/gostafa/linuxdesktop/internal/port"
 )
 
-// Bus implements port.Bus over two lazily established private connections.
-//
-// The stored context is the connection lifetime, not a per-call deadline: it
-// is the overall detection context, so a wedged bus cannot outlive the run.
-// Individual calls carry their own, shorter deadlines.
-type Bus struct {
-	errs  [2]error
-	base  context.Context
-	conns [2]*dbus.Conn
-	once  [2]sync.Once
-}
+type (
+	// Bus implements port.Bus over two lazily established private connections.
+	Bus = connectionBus[port.BusKind, *dbus.Conn]
+
+	connection interface {
+		BusObject() dbus.BusObject
+		Object(destination string, path dbus.ObjectPath) dbus.BusObject
+	}
+
+	// connectionBus separates bus operations from connection selection and lifetime.
+	connectionBus[K any, C connection] struct {
+		connect func(K) (C, error)
+		close   func() error
+	}
+
+	// connections caches the result of opening each private connection once.
+	connections struct {
+		open  func(context.Context, port.BusKind) (*dbus.Conn, error)
+		errs  [2]error
+		conns [2]*dbus.Conn
+		once  [2]sync.Once
+	}
+)

@@ -6,10 +6,12 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 
 	"github.com/gostafa/linuxdesktop/internal/domain"
+	"github.com/gostafa/linuxdesktop/internal/port"
 	"github.com/gostafa/linuxdesktop/internal/rules"
 )
 
@@ -17,7 +19,7 @@ import (
 // caller needs the effective configuration in order to decide which adapters
 // to construct in the first place.
 func NewConfig(opts ...Option) Config {
-	cfg := DefaultConfig
+	cfg := DefaultConfig()
 
 	for i := range opts {
 		if opts[i] != nil {
@@ -25,12 +27,17 @@ func NewConfig(opts ...Option) Config {
 		}
 	}
 
-	return withDefaults(cfg)
+	return withDefaults(&cfg)
 }
 
 // New returns an Engine wired to deps.
-func New(deps *Deps, cfg Config) *Engine {
-	return &Engine{deps: *deps, cfg: withDefaults(cfg)}
+func New(deps *Deps, cfg *Config) *Engine {
+	state := &detector{deps: *deps, cfg: withDefaults(cfg)}
+	engine := Engine(
+		func(ctx context.Context) (*domain.Environment, error) { return detect(ctx, state) },
+	)
+
+	return &engine
 }
 
 // WithTimeout bounds the whole detection run.
@@ -61,7 +68,7 @@ func WithProcessScan() Option {
 // Detect runs the probes and merges their answers. The returned Environment is
 // never nil; the error reports non-fatal probe failures and can be ignored by
 // callers that only want the data.
-func (eng *Engine) Detect(ctx context.Context) (*domain.Environment, error) {
+func detect(ctx context.Context, eng *detector) (*domain.Environment, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -74,27 +81,27 @@ func (eng *Engine) Detect(ctx context.Context) (*domain.Environment, error) {
 		defer cancel()
 	}
 
-	gather := newCollector(eng.snapshot())
+	gather := newCollector(snapshot(eng))
 
-	eng.run(ctx, gather)
-	eng.finish(gather)
+	run(ctx, eng, gather)
+	finish(eng, gather)
 
 	return gather.out, errors.Join(gather.failed...)
 }
 
 // finish is stage two: everything below is pure, with every fact collected.
-func (eng *Engine) finish(gather *collector) {
-	display := gather.display()
+func finish(eng *detector, gather *collector) {
+	display := collectedDisplay(gather)
 
-	gather.summarize(&display)
+	summarize(gather, &display)
 
-	eng.publish(gather, &display)
+	publish(eng, gather, &display)
 }
 
 // probeContext derives the per-probe deadline. The returned cancel must always
 // be called, which is why probes are spawned through a helper rather than
 // inline.
-func (eng *Engine) probeContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func probeContext(ctx context.Context, eng *detector) (context.Context, context.CancelFunc) {
 	if eng.cfg.ProbeTimeout <= zero {
 		return context.WithCancel(ctx)
 	}
@@ -102,87 +109,9 @@ func (eng *Engine) probeContext(ctx context.Context) (context.Context, context.C
 	return context.WithTimeout(ctx, eng.cfg.ProbeTimeout)
 }
 
-func (eng *Engine) probeDesktop(ctx context.Context, gather *collector) error {
-	info, err := eng.deps.Desktop.Desktop(ctx, &gather.sig.Env)
-
-	gather.under(func() { gather.out.Desktop = info })
-
-	return err
-}
-
-func (eng *Engine) probeGPUs(ctx context.Context, gather *collector) error {
-	gpus, primary, err := eng.deps.GPUs.GPUs(ctx)
-
-	gather.under(func() {
-		gather.out.Graphics.GPUs = gpus
-		gather.out.Graphics.PrimaryGPU = primary
-	})
-
-	return err
-}
-
-func (eng *Engine) probeOS(ctx context.Context, gather *collector) error {
-	info, err := eng.deps.OS.OS(ctx)
-
-	gather.under(func() { gather.out.OS = info })
-
-	return err
-}
-
-func (eng *Engine) probePortal(ctx context.Context, gather *collector) error {
-	info, err := eng.deps.Portal.Portal(ctx, &gather.sig.Env)
-
-	gather.under(func() { gather.out.Portal = info })
-
-	return err
-}
-
-func (eng *Engine) probeProcesses(ctx context.Context, gather *collector) error {
-	names, err := eng.deps.Process.Processes(ctx)
-
-	gather.under(func() { gather.sig.Processes = names })
-
-	return err
-}
-
-func (eng *Engine) probeSession(ctx context.Context, gather *collector) error {
-	info, err := eng.deps.Session.Session(ctx, &gather.sig.Env)
-
-	gather.under(func() { gather.out.Session = info })
-
-	return err
-}
-
-func (eng *Engine) probeStack(ctx context.Context, gather *collector) error {
-	opengl, vulkan, err := eng.deps.Stack.Stack(ctx)
-
-	gather.under(func() {
-		gather.out.Graphics.OpenGL = opengl
-		gather.out.Graphics.Vulkan = vulkan
-	})
-
-	return err
-}
-
-func (eng *Engine) probeWayland(ctx context.Context, gather *collector) error {
-	info, err := eng.deps.Wayland.Wayland(ctx, &gather.sig.Env)
-
-	gather.under(func() { gather.wayland = info })
-
-	return err
-}
-
-func (eng *Engine) probeX11(ctx context.Context, gather *collector) error {
-	info, err := eng.deps.X11.X11(ctx, &gather.sig.Env)
-
-	gather.under(func() { gather.x11 = info })
-
-	return err
-}
-
 // processSection is when the /proc fallback runs, which is never unless the
 // caller asked for it: an unselected section is one no probe fires for.
-func (eng *Engine) processSection() domain.Section {
+func processSection(eng *detector) domain.Section {
 	if !eng.cfg.ProcessScan {
 		return zero
 	}
@@ -191,29 +120,29 @@ func (eng *Engine) processSection() domain.Section {
 }
 
 // publish writes the finished sections the caller asked for.
-func (eng *Engine) publish(gather *collector, display *domain.DisplayInfo) {
-	if eng.wants(sectionDisplayProbes) {
+func publish(eng *detector, gather *collector, display *domain.DisplayInfo) {
+	if wants(eng, sectionDisplayProbes) {
 		// Headless is only meaningful once the display probes have run;
 		// asserting it from a run that skipped them would be a lie.
 		gather.out.Headless = rules.Headless(display.WaylandAvailable, display.X11Available)
 	}
 
-	if eng.wants(domain.SectionDisplay) {
+	if wants(eng, domain.SectionDisplay) {
 		gather.out.Display = *display
 	}
 
-	if eng.wants(domain.SectionCompositor) {
+	if wants(eng, domain.SectionCompositor) {
 		gather.out.Compositor = rules.Compositor(gather.sig)
 	}
 }
 
 // run starts every wired probe whose section is wanted, then waits for all of
 // them.
-func (eng *Engine) run(ctx context.Context, gather *collector) {
-	steps := eng.steps()
+func run(ctx context.Context, eng *detector, gather *collector) {
+	steps := steps(eng)
 	for i := range steps {
-		if steps[i].wired && eng.wants(steps[i].section) {
-			eng.spawn(ctx, gather, steps[i].run)
+		if steps[i].wired && wants(eng, steps[i].section) {
+			spawn(ctx, gather, timedProbe(eng, steps[i].run))
 		}
 	}
 
@@ -222,8 +151,8 @@ func (eng *Engine) run(ctx context.Context, gather *collector) {
 
 // snapshot reads the environment once, before any probe runs, so that no probe
 // pays for a repeated lookup.
-func (eng *Engine) snapshot() *domain.Signals {
-	sig := &domain.Signals{}
+func snapshot(eng *detector) *domain.Signals {
+	sig := new(domain.Signals)
 
 	if eng.deps.Env != nil {
 		sig.Env = eng.deps.Env.Snapshot()
@@ -234,42 +163,153 @@ func (eng *Engine) snapshot() *domain.Signals {
 
 // spawn runs one probe on its own goroutine under its own deadline, so one
 // wedged server cannot consume the whole budget.
-func (eng *Engine) spawn(ctx context.Context, gather *collector, run probeFunc) {
+func spawn(ctx context.Context, gather *collector, run probeFunc) {
 	gather.wait.Go(func() {
-		probeCtx, cancel := eng.probeContext(ctx)
-		defer cancel()
-
-		gather.record(run(probeCtx, gather))
+		record(gather, run(ctx, gather))
 	})
 }
 
 // steps is every probe the engine knows how to run, with the sections it
 // contributes to and whether its adapter was supplied.
-func (eng *Engine) steps() []step {
+func steps(eng *detector) []step {
+	steps := systemSteps(eng)
+
+	steps = append(steps, sessionSteps(eng)...)
+	steps = append(steps, displaySteps(eng)...)
+
+	return append(steps, graphicsSteps(eng)...)
+}
+
+func systemSteps(eng *detector) []step {
 	deps := &eng.deps
 
 	return []step{
-		{eng.probeOS, domain.SectionOS, deps.OS != nil},
-		{eng.probeSession, domain.SectionSession, deps.Session != nil},
-		{eng.probeX11, sectionDisplayProbes, deps.X11 != nil},
-		{eng.probeWayland, sectionDisplayProbes, deps.Wayland != nil},
-		{eng.probeDesktop, sectionDesktopProbes, deps.Desktop != nil},
-		{eng.probeGPUs, domain.SectionGraphics, deps.GPUs != nil},
-		{eng.probeStack, domain.SectionGraphics, deps.Stack != nil},
-		{eng.probePortal, domain.SectionPortal, deps.Portal != nil},
-		{eng.probeProcesses, eng.processSection(), deps.Process != nil},
+		{
+			plainProbe(
+				deps.OS,
+				port.OSProbe.OS,
+				resultTarget[domain.OSInfo]{value: osTarget, name: "operating system"},
+			),
+			domain.SectionOS,
+			deps.OS != nil,
+		},
+		{
+			plainProbe(
+				deps.Process,
+				port.ProcessProbe.Processes,
+				resultTarget[[]string]{value: processTarget, name: "processes"},
+			),
+			processSection(eng), deps.Process != nil,
+		},
 	}
 }
 
-func (eng *Engine) wants(s domain.Section) bool { return eng.cfg.Sections&s != zero }
+func sessionSteps(eng *detector) []step {
+	deps := &eng.deps
+
+	return []step{
+		{
+			envProbe(
+				deps.Session,
+				port.SessionProbe.Session,
+				resultTarget[domain.SessionInfo]{value: sessionTarget, name: "session"},
+			),
+			domain.SectionSession, deps.Session != nil,
+		},
+		{
+			envProbe(
+				deps.Desktop,
+				port.DesktopProbe.Desktop,
+				resultTarget[domain.DesktopInfo]{value: desktopTarget, name: "desktop"},
+			),
+			sectionDesktopProbes, deps.Desktop != nil,
+		},
+		{
+			envProbe(
+				deps.Portal,
+				port.PortalProbe.Portal,
+				resultTarget[domain.PortalInfo]{value: portalTarget, name: "portal"},
+			),
+			domain.SectionPortal,
+			deps.Portal != nil,
+		},
+	}
+}
+
+func displaySteps(eng *detector) []step {
+	deps := &eng.deps
+
+	return []step{
+		{
+			envProbe(
+				deps.X11,
+				port.X11Probe.X11,
+				resultTarget[*domain.X11Info]{value: x11Target, name: "X11"},
+			),
+			sectionDisplayProbes,
+			deps.X11 != nil,
+		},
+		{
+			envProbe(
+				deps.Wayland,
+				port.WaylandProbe.Wayland,
+				resultTarget[*domain.WaylandInfo]{value: waylandTarget, name: "Wayland"},
+			),
+			sectionDisplayProbes, deps.Wayland != nil,
+		},
+	}
+}
+
+func envProbe[P, T any](
+	probe P,
+	read func(P, context.Context, *domain.Env) (T, error),
+	target resultTarget[T],
+) probeFunc {
+	return func(ctx context.Context, gather *collector) error {
+		info, err := read(probe, ctx, &gather.sig.Env)
+
+		return storeResult(gather, err, publication{
+			name: target.name, store: func() { *target.value(gather) = info },
+		})
+	}
+}
+
+func plainProbe[P, T any](
+	probe P,
+	read func(P, context.Context) (T, error),
+	target resultTarget[T],
+) probeFunc {
+	return func(ctx context.Context, gather *collector) error {
+		info, err := read(probe, ctx)
+
+		return storeResult(gather, err, publication{
+			name: target.name, store: func() { *target.value(gather) = info },
+		})
+	}
+}
+
+func desktopTarget(gather *collector) *domain.DesktopInfo  { return &gather.out.Desktop }
+func osTarget(gather *collector) *domain.OSInfo            { return &gather.out.OS }
+func portalTarget(gather *collector) *domain.PortalInfo    { return &gather.out.Portal }
+func processTarget(gather *collector) *[]string            { return &gather.sig.Processes }
+func sessionTarget(gather *collector) *domain.SessionInfo  { return &gather.out.Session }
+func waylandTarget(gather *collector) **domain.WaylandInfo { return &gather.wayland }
+func x11Target(gather *collector) **domain.X11Info         { return &gather.x11 }
+
+func wants(eng *detector, s domain.Section) bool { return eng.cfg.Sections&s != zero }
 
 func newCollector(sig *domain.Signals) *collector {
-	return &collector{out: &domain.Environment{}, sig: sig}
+	gather := new(collector)
+
+	gather.out = new(domain.Environment)
+	gather.sig = sig
+
+	return gather
 }
 
 // display assembles DisplayInfo from the environment and whatever the two
 // protocol probes managed to reach.
-func (gather *collector) display() domain.DisplayInfo {
+func collectedDisplay(gather *collector) domain.DisplayInfo {
 	env := &gather.sig.Env
 	info := domain.DisplayInfo{
 		Protocol:         domain.DisplayProtocolUnknown,
@@ -279,6 +319,7 @@ func (gather *collector) display() domain.DisplayInfo {
 		WaylandAvailable: gather.wayland != nil,
 		X11:              gather.x11,
 		Wayland:          gather.wayland,
+		XWayland:         false,
 	}
 	// An Xwayland server says so itself; otherwise a reachable X server inside
 	// a Wayland session can only be Xwayland.
@@ -290,7 +331,7 @@ func (gather *collector) display() domain.DisplayInfo {
 
 // record keeps a probe failure. Failures are collected rather than returned,
 // since one unreachable server should not hide what the others found.
-func (gather *collector) record(err error) {
+func record(gather *collector, err error) {
 	if err == nil {
 		return
 	}
@@ -303,7 +344,7 @@ func (gather *collector) record(err error) {
 
 // recordProtocols copies what the protocol probes saw into the signals the
 // classification rules read.
-func (gather *collector) recordProtocols() {
+func recordProtocols(gather *collector) {
 	if gather.x11 != nil {
 		gather.sig.X11WindowManager = gather.x11.WindowManager
 		gather.sig.X11Extensions = gather.x11.Extensions
@@ -316,14 +357,14 @@ func (gather *collector) recordProtocols() {
 
 // summarize records everything the rules reason over, now that every probe has
 // answered, and settles which protocol a client should actually speak.
-func (gather *collector) summarize(display *domain.DisplayInfo) {
+func summarize(gather *collector, display *domain.DisplayInfo) {
 	sig := gather.sig
 
 	sig.Desktop = gather.out.Desktop.Environment
 	sig.X11Reachable = display.X11Available
 	sig.WaylandReachable = display.WaylandAvailable
 
-	gather.recordProtocols()
+	recordProtocols(gather)
 
 	display.Protocol = rules.Protocol(
 		gather.out.Session.Type,
@@ -334,7 +375,7 @@ func (gather *collector) summarize(display *domain.DisplayInfo) {
 
 // under runs fn while holding the lock. Every probe writes into the same
 // Environment from its own goroutine, so all of them go through here.
-func (gather *collector) under(fn func()) {
+func under(gather *collector, fn func()) {
 	gather.lock.Lock()
 	defer gather.lock.Unlock()
 
@@ -342,7 +383,8 @@ func (gather *collector) under(fn func()) {
 }
 
 // withDefaults fills in a configuration the caller left blank.
-func withDefaults(cfg Config) Config {
+func withDefaults(config *Config) Config {
+	cfg := *config
 	if cfg.Sections == zero {
 		cfg.Sections = domain.SectionAll
 	}
@@ -356,4 +398,68 @@ func hasExtension(info *domain.X11Info, name string) bool {
 	}
 
 	return slices.Contains(info.Extensions, name)
+}
+
+// storeResult publishes even a partial answer before reporting its probe error.
+func storeResult(gather *collector, err error, result publication) error {
+	under(gather, result.store)
+
+	if err != nil {
+		return fmt.Errorf("core: probe %s: %w", result.name, err)
+	}
+
+	return nil
+}
+
+func graphicsSteps(eng *detector) []step {
+	deps := &eng.deps
+
+	return []step{
+		{
+			pairedProbe(deps.GPUs, port.GPUProbe.GPUs, pairedTarget[[]domain.GPUInfo, string]{
+				first: gpuTarget, second: primaryTarget, name: "GPUs",
+			}),
+			domain.SectionGraphics, deps.GPUs != nil,
+		},
+		{
+			pairedProbe(
+				deps.Stack,
+				port.StackProbe.Stack,
+				pairedTarget[domain.OpenGLInfo, domain.VulkanInfo]{
+					first: openglTarget, second: vulkanTarget, name: "graphics stack",
+				},
+			),
+			domain.SectionGraphics,
+			deps.Stack != nil,
+		},
+	}
+}
+
+func pairedProbe[P, A, B any](
+	probe P,
+	read func(P, context.Context) (A, B, error),
+	target pairedTarget[A, B],
+) probeFunc {
+	return func(ctx context.Context, gather *collector) error {
+		left, right, err := read(probe, ctx)
+
+		return storeResult(gather, err, publication{name: target.name, store: func() {
+			*target.first(gather) = left
+			*target.second(gather) = right
+		}})
+	}
+}
+
+func gpuTarget(gather *collector) *[]domain.GPUInfo     { return &gather.out.Graphics.GPUs }
+func primaryTarget(gather *collector) *string           { return &gather.out.Graphics.PrimaryGPU }
+func openglTarget(gather *collector) *domain.OpenGLInfo { return &gather.out.Graphics.OpenGL }
+func vulkanTarget(gather *collector) *domain.VulkanInfo { return &gather.out.Graphics.Vulkan }
+
+func timedProbe(eng *detector, run probeFunc) probeFunc {
+	return func(ctx context.Context, gather *collector) error {
+		probeCtx, cancel := probeContext(ctx, eng)
+		defer cancel()
+
+		return run(probeCtx, gather)
+	}
 }

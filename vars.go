@@ -8,19 +8,22 @@ import (
 	"time"
 )
 
-// ErrNotLinux is joined into the error from Detect when the program is not
-// running on Linux. The returned Environment is still valid: it is zero-valued
-// and marked headless, so a cross-platform caller can import this package
-// unconditionally and branch on the result rather than on the build tag.
-var ErrNotLinux = errors.New("linuxdesktop: not running on Linux")
-
-// Default timeouts. DefaultTimeout bounds a whole detection run and
-// DefaultProbeTimeout bounds each probe within it, so one unresponsive server
-// cannot consume the entire budget.
 const (
-	DefaultTimeout      = 2 * time.Second
+	// DefaultTimeout bounds a whole detection run and
+	// DefaultProbeTimeout bounds each probe within it, so one unresponsive server
+	// cannot consume the entire budget.
+	DefaultTimeout = 2 * time.Second
+	// DefaultProbeTimeout bounds each individual detection probe.
 	DefaultProbeTimeout = 500 * time.Millisecond
 )
 
-// compile-time assertion that the exported defaults stay durations.
-var _ time.Duration = DefaultTimeout
+var (
+	// ErrNotLinux is joined into the error from Detect when the program is not
+	// running on Linux. The returned Environment is still valid: it is zero-valued
+	// and marked headless, so a cross-platform caller can import this package
+	// unconditionally and branch on the result rather than on the build tag.
+	ErrNotLinux = errors.New("linuxdesktop: not running on Linux")
+
+	// compile-time assertion that the exported defaults stay durations.
+	_ time.Duration = DefaultTimeout
+)

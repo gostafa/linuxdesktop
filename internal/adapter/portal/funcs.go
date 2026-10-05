@@ -6,6 +6,7 @@ package portal
 import (
 	"context"
 	"encoding/xml"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -17,49 +18,73 @@ import (
 
 // New returns a portal probe. bus may be nil, which reports the portal as
 // unavailable without attempting to connect.
-func New(bus port.Bus) *Probe { return &Probe{bus: bus} }
+func New(bus port.Bus) Probe { return portalAt("", bus) }
 
 // Portal reports whether xdg-desktop-portal is running and which of its
 // interfaces the active backend exports.
-func (probe *Probe) Portal(ctx context.Context, env *domain.Env) (domain.PortalInfo, error) {
-	info := domain.PortalInfo{Backend: backend(env)}
+func portalAt(files string, bus port.Bus) Probe {
+	return func(ctx context.Context, env *domain.Env) (domain.PortalInfo, error) {
+		info := domain.PortalInfo{Backend: backend(files, env)}
 
-	if probe.bus == nil {
-		return info, nil
+		if bus == nil {
+			return info, nil
+		}
+
+		owned, err := bus.HasOwner(ctx, port.SessionBus, busName)
+
+		info.Available = owned
+
+		if err != nil {
+			return info, fmt.Errorf(errDetectAvailability, err)
+		}
+
+		if !owned {
+			return info, nil
+		}
+
+		return availableInterfaces(ctx, &info, bus)
+	}
+}
+
+func availableInterfaces(
+	ctx context.Context,
+	info *domain.PortalInfo,
+	bus port.Bus,
+) (domain.PortalInfo, error) {
+	result, callErr := interfaces(ctx, info, bus)
+	if callErr != nil {
+		return result, fmt.Errorf(errDetectAvailability, callErr)
 	}
 
-	owned, err := probe.bus.HasOwner(ctx, port.SessionBus, busName)
-
-	info.Available = owned
-
-	if err != nil || !owned {
-		return info, err
-	}
-
-	return probe.interfaces(ctx, info)
+	return result, nil
 }
 
 // interfaces asks the running portal what it exports, which is the only way to
 // learn what the active backend actually implements.
-func (probe *Probe) interfaces(
+func interfaces(
 	ctx context.Context,
-	info domain.PortalInfo,
+	info *domain.PortalInfo,
+	bus port.Bus,
 ) (domain.PortalInfo, error) {
-	raw, err := probe.bus.Introspect(ctx, port.SessionBus, busName, objectPath)
+	raw, err := bus.Introspect(
+		ctx,
+		port.SessionBus,
+		&port.Object{Destination: busName, Path: objectPath},
+	)
 	if err != nil {
-		return info, err
+		return *info, fmt.Errorf(errReadInterfaces, err)
 	}
 
 	var root node
 
 	err = xml.Unmarshal([]byte(raw), &root)
 	if err != nil {
-		return info, err
+		return *info, fmt.Errorf(errReadInterfaces, err)
 	}
 
-	applyInterfaces(&info, root.Interfaces)
+	applyInterfaces(info, root.Interfaces)
 
-	return info, nil
+	return *info, nil
 }
 
 // applyInterfaces marks every portal interface the backend exports.
@@ -103,15 +128,15 @@ func interfaceFlags() map[string]flagSetter {
 
 // backend names the portal implementation that should be servicing this
 // desktop, preferring explicit configuration over the legacy UseIn matching.
-func backend(env *domain.Env) string {
+func backend(files string, env *domain.Env) string {
 	paths := configPaths(env)
 	for i := range paths {
-		if name := preferredDefault(paths[i]); name != noValue {
+		if name := preferredDefault(files, paths[i]); name != noValue {
 			return name
 		}
 	}
 
-	return backendFromPortalFiles(env)
+	return backendFromPortalFiles(files, env)
 }
 
 // configPaths lists portals.conf locations from most to least specific.
@@ -144,8 +169,8 @@ func userConfig(env *domain.Env) []string {
 
 // preferredDefault reads the [preferred] default= entry, which is a
 // semicolon-separated preference list.
-func preferredDefault(path string) string {
-	data, err := sysfs.Bytes(path)
+func preferredDefault(files, path string) string {
+	data, err := sysfs.Bytes(sysfs.Path(files, path))
 	if err != nil {
 		return noValue
 	}
@@ -168,13 +193,13 @@ func named(candidate string) bool {
 
 // backendFromPortalFiles matches the UseIn field of each installed .portal file
 // against $XDG_CURRENT_DESKTOP. A lone installed backend wins by default.
-func backendFromPortalFiles(env *domain.Env) string {
-	names, err := sysfs.DirNames(portalsDir)
+func backendFromPortalFiles(files string, env *domain.Env) string {
+	names, err := sysfs.DirNames(sysfs.Path(files, portalsDir))
 	if err != nil {
 		return noValue
 	}
 
-	found := installed(names)
+	found := installed(files, names)
 	wanted := desktopTokens(env)
 
 	for i := range found {
@@ -188,11 +213,11 @@ func backendFromPortalFiles(env *domain.Env) string {
 
 // installed reads every .portal file in the portals directory, skipping the
 // ones that are unreadable or not portal files at all.
-func installed(names []string) []backendFile {
+func installed(files string, names []string) []backendFile {
 	found := make([]backendFile, zero, len(names))
 
 	for i := range names {
-		file, ok := readPortalFile(names[i])
+		file, ok := readPortalFile(files, names[i])
 		if !ok {
 			continue
 		}
@@ -204,14 +229,16 @@ func installed(names []string) []backendFile {
 }
 
 // readPortalFile describes one .portal file.
-func readPortalFile(name string) (backendFile, bool) {
+func readPortalFile(files, name string) (backendFile, bool) {
+	var empty backendFile
+
 	if !strings.HasSuffix(name, portalSuffix) {
-		return backendFile{}, false
+		return empty, false
 	}
 
-	data, err := sysfs.Bytes(filepath.Join(portalsDir, name))
+	data, err := sysfs.Bytes(sysfs.Path(files, filepath.Join(portalsDir, name)))
 	if err != nil {
-		return backendFile{}, false
+		return empty, false
 	}
 
 	file := backendFile{

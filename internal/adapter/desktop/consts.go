@@ -7,6 +7,5 @@ package desktop
 const (
 	shellName    = "org.gnome.Shell"
 	shellPath    = "/org/gnome/Shell"
-	shellIface   = "org.gnome.Shell"
 	shellVersion = "ShellVersion"
 )

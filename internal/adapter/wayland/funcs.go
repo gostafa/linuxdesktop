@@ -20,7 +20,7 @@ import (
 )
 
 // New returns a Wayland probe.
-func New() Probe { return Probe{} }
+func New() Probe { return wayland }
 
 // SocketPath resolves the compositor socket, returning "" when there is none.
 // It only reports a path that is actually a socket, so callers can use it as a
@@ -51,7 +51,7 @@ func Has(globals []domain.WaylandGlobal, iface string) bool {
 
 // Wayland connects to the compositor and enumerates its global registry. A nil
 // result with a nil error means there was no compositor to talk to.
-func (Probe) Wayland(ctx context.Context, env *domain.Env) (*domain.WaylandInfo, error) {
+func wayland(ctx context.Context, env *domain.Env) (*domain.WaylandInfo, error) {
 	path := SocketPath(env)
 	if path == noValue {
 		return inherited(env), nil
@@ -59,12 +59,16 @@ func (Probe) Wayland(ctx context.Context, env *domain.Env) (*domain.WaylandInfo,
 
 	globals, err := listen(ctx, path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("wayland: enumerate globals: %w", err)
 	}
 
-	info := &domain.WaylandInfo{Display: displayName(env), Globals: globals}
-	if fd, ok := inheritedFD(env); ok {
-		info.SocketFD = fd
+	info := &domain.WaylandInfo{
+		Display:  displayName(env),
+		Globals:  globals,
+		SocketFD: wireZero,
+	}
+	if descriptor, ok := inheritedFD(env); ok {
+		info.SocketFD = descriptor
 	}
 
 	return info, nil
@@ -76,12 +80,13 @@ func newRegistry() *registry {
 	return &registry{
 		globals: slices.Grow([]domain.WaylandGlobal(nil), expectedGlobals),
 		buf:     make([]byte, initialReadBuf),
+		filled:  wireZero,
 	}
 }
 
 // compact moves the bytes of a partly received message to the front, so the
 // next read continues it rather than overwriting it.
-func (reg *registry) compact(used int) {
+func compact(reg *registry, used int) {
 	copy(reg.buf, reg.buf[used:reg.filled])
 
 	reg.filled -= used
@@ -89,24 +94,44 @@ func (reg *registry) compact(used int) {
 
 // dispatch routes one decoded message to the object it names. Anything else is
 // a message this client never asked for.
-func (reg *registry) dispatch(object, opcode uint32, body []byte) error {
-	switch object {
-	case objRegistry:
-		reg.record(opcode, body)
-	case objCallback:
-		return complete(opcode)
-	case objDisplay:
-		return failure(opcode, body)
-	default:
-		// An object this client never allocated; nothing to do.
+func dispatch(reg *registry, event *wireEvent) error {
+	object, opcode, body := event.object, event.opcode, event.body
+	if object == objRegistry {
+		record(reg, opcode, body)
+
+		return nil
+	}
+
+	err := dispatchControl(object, opcode, body)
+	if err != nil {
+		return fmt.Errorf(errDispatchEvent, err)
 	}
 
 	return nil
 }
 
+func dispatchControl(object, opcode uint32, body []byte) error {
+	switch object {
+	case objCallback:
+		err := complete(opcode)
+		if err != nil {
+			return fmt.Errorf("wayland: callback event: %w", err)
+		}
+		return nil
+	case wireOne:
+		err := failure(opcode, body)
+		if err != nil {
+			return fmt.Errorf("wayland: display event: %w", err)
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
 // grow doubles the buffer when it is full, refusing to pass the cap that keeps
 // a hostile peer from making the client allocate without end.
-func (reg *registry) grow() error {
+func grow(reg *registry) error {
 	if reg.filled < len(reg.buf) {
 		return nil
 	}
@@ -125,11 +150,8 @@ func (reg *registry) grow() error {
 
 // message handles the one message starting at offset and reports its size. The
 // false result means the buffer does not hold all of it yet.
-func (reg *registry) message(offset int) (int, bool, error) {
-	order := binary.NativeEndian
-	object := order.Uint32(reg.buf[offset:])
-	word := order.Uint32(reg.buf[offset+wordBytes:])
-	size := int(word >> opcodeBits)
+func message(reg *registry, offset int) (size int, ready bool, err error) {
+	object, opcode, size := messageHeader(reg.buf[offset:])
 
 	if size < headerSize || size > maxMessageBytes {
 		return size, false, ErrProtocol
@@ -141,18 +163,23 @@ func (reg *registry) message(offset int) (int, bool, error) {
 
 	body := reg.buf[offset+headerSize : offset+size]
 
-	return size, true, reg.dispatch(object, word&opcodeMask, body)
+	callErr := dispatch(reg, &wireEvent{object: object, opcode: opcode, body: body})
+	if callErr != nil {
+		return size, true, fmt.Errorf("wayland: decode message: %w", callErr)
+	}
+
+	return size, true, nil
 }
 
 // parse handles every message the buffer now holds in full, then compacts what
 // is left of a partly received one to the front.
-func (reg *registry) parse() error {
+func parse(reg *registry) error {
 	var used int
 
 	for reg.filled-used >= headerSize {
-		size, ready, err := reg.message(used)
+		size, ready, err := message(reg, used)
 		if err != nil {
-			return err
+			return fmt.Errorf("wayland: parse events: %w", err)
 		}
 
 		if !ready {
@@ -162,14 +189,14 @@ func (reg *registry) parse() error {
 		used += size
 	}
 
-	reg.compact(used)
+	compact(reg, used)
 
 	return nil
 }
 
 // record keeps a wl_registry.global event and ignores every other one.
-func (reg *registry) record(opcode uint32, body []byte) {
-	if opcode != evRegistryGlobal {
+func record(reg *registry, opcode uint32, body []byte) {
+	if opcode != wireZero {
 		return
 	}
 
@@ -182,23 +209,42 @@ func (reg *registry) record(opcode uint32, body []byte) {
 // completes. Parsing happens before the read error is acted on: a compositor is
 // entitled to send the whole registry and close, delivering the data and the
 // EOF in one read, and that data is exactly what was asked for.
-func (reg *registry) step(reader io.Reader) error {
-	err := reg.grow()
+func step(reg *registry, reader io.Reader) error {
+	err := grow(reg)
 	if err != nil {
-		return err
+		return fmt.Errorf(errReadEvents, err)
 	}
 
-	before := reg.filled
-	got, rerr := reader.Read(reg.buf[reg.filled:])
+	callErr := read(reg, reader)
+	if callErr != nil {
+		return fmt.Errorf(errReadEvents, callErr)
+	}
+
+	return nil
+}
+
+func read(reg *registry, reader io.Reader) error {
+	got, err := reader.Read(reg.buf[reg.filled:])
 
 	reg.filled += got
 
-	err = reg.parse()
-	if err != nil {
-		return err
+	parseErr := parse(reg)
+	if parseErr != nil {
+		return fmt.Errorf("wayland: read parsed events: %w", parseErr)
 	}
 
-	return stalled(reg.filled == before, rerr)
+	callErr := stalled(got, err)
+	if callErr != nil {
+		return fmt.Errorf("wayland: read progress: %w", callErr)
+	}
+	return nil
+}
+
+func messageHeader(frame []byte) (object, opcode uint32, size int) {
+	order := binary.NativeEndian
+	word := order.Uint32(frame[wordBytes:])
+
+	return order.Uint32(frame), word & opcodeMask, int(word >> opcodeBits)
 }
 
 // listen dials the compositor and returns the registry it advertises.
@@ -207,7 +253,7 @@ func listen(ctx context.Context, path string) ([]domain.WaylandGlobal, error) {
 
 	conn, err := dialer.DialContext(ctx, unixNetwork, path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("wayland: connect compositor: %w", err)
 	}
 
 	globals, err := converse(ctx, conn)
@@ -225,15 +271,20 @@ func listen(ctx context.Context, path string) ([]domain.WaylandGlobal, error) {
 func converse(ctx context.Context, conn net.Conn) ([]domain.WaylandGlobal, error) {
 	err := bound(ctx, conn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(errQueryRegistry, err)
 	}
 
 	err = handshake(conn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(errQueryRegistry, err)
 	}
 
-	return readGlobals(conn)
+	result, callErr := readGlobals(conn)
+	if callErr != nil {
+		return result, fmt.Errorf(errQueryRegistry, callErr)
+	}
+
+	return result, nil
 }
 
 // bound applies the caller's deadline to the connection, if it set one.
@@ -243,7 +294,12 @@ func bound(ctx context.Context, conn net.Conn) error {
 		return nil
 	}
 
-	return conn.SetDeadline(deadline)
+	callErr := conn.SetDeadline(deadline)
+	if callErr != nil {
+		return fmt.Errorf("wayland: set deadline: %w", callErr)
+	}
+
+	return nil
 }
 
 // handshake writes wl_display.get_registry and wl_display.sync as one frame, so
@@ -251,12 +307,19 @@ func bound(ctx context.Context, conn net.Conn) error {
 func handshake(writer io.Writer) error {
 	var buf [handshakeSize]byte
 
-	putRequest(buf[:requestSize], opDisplayGetRegistry, objRegistry)
-	putRequest(buf[requestSize:], opDisplaySync, objCallback)
+	putRequest(buf[:requestSize], wireOne, objRegistry)
+	putRequest(buf[requestSize:], wireZero, objCallback)
 
-	_, err := writer.Write(buf[:])
+	written, err := writer.Write(buf[:])
+	if err == nil && written != len(buf) {
+		return io.ErrShortWrite
+	}
 
-	return err
+	if err != nil {
+		return fmt.Errorf("wayland: write handshake: %w", err)
+	}
+
+	return nil
 }
 
 // putRequest writes one wl_display request: the object id, the packed
@@ -264,7 +327,7 @@ func handshake(writer io.Writer) error {
 func putRequest(frame []byte, opcode, newID uint32) {
 	order := binary.NativeEndian
 
-	order.PutUint32(frame, objDisplay)
+	order.PutUint32(frame, wireOne)
 	order.PutUint32(frame[wordBytes:], requestSize<<opcodeBits|opcode)
 	order.PutUint32(frame[headerSize:], newID)
 }
@@ -275,9 +338,13 @@ func readGlobals(reader io.Reader) ([]domain.WaylandGlobal, error) {
 	reg := newRegistry()
 
 	for {
-		err := reg.step(reader)
+		err := step(reg, reader)
 		if err != nil {
-			return reg.globals, finished(err)
+			callErr := registryError(err)
+			if callErr != nil {
+				return reg.globals, fmt.Errorf("wayland: read registry: %w", callErr)
+			}
+			return reg.globals, nil
 		}
 	}
 }
@@ -293,12 +360,12 @@ func finished(err error) error {
 
 // stalled reports the read error, or the failure to make any progress that
 // would otherwise spin the loop forever against a silent peer.
-func stalled(stuck bool, err error) error {
+func stalled(progress int, err error) error {
 	if err != nil {
 		return err
 	}
 
-	if stuck {
+	if progress == wireZero {
 		return io.ErrNoProgress
 	}
 
@@ -307,7 +374,7 @@ func stalled(stuck bool, err error) error {
 
 // complete reports the sync callback that ends the listing.
 func complete(opcode uint32) error {
-	if opcode != evCallbackDone {
+	if opcode != wireZero {
 		return nil
 	}
 
@@ -316,20 +383,26 @@ func complete(opcode uint32) error {
 
 // failure turns a wl_display.error event into the error it describes.
 func failure(opcode uint32, body []byte) error {
-	if opcode != evDisplayError {
+	if opcode != wireZero {
 		return nil
 	}
 
-	return parseError(body)
+	return fmt.Errorf("wayland: decode protocol error: %w", parseError(body))
 }
 
 // parseGlobal decodes name, interface and version. Wayland strings are a
 // length-prefixed, NUL-terminated blob padded to a word boundary.
 func parseGlobal(body []byte) (domain.WaylandGlobal, bool) {
-	if len(body) < fixedBody {
-		return domain.WaylandGlobal{}, false
+	var empty domain.WaylandGlobal
+
+	if len(body) < requestSize {
+		return empty, false
 	}
 
+	return decodeGlobal(body)
+}
+
+func decodeGlobal(body []byte) (domain.WaylandGlobal, bool) {
 	order := binary.NativeEndian
 	length := int(order.Uint32(body[wordBytes:]))
 	rest := body[wordBytes+wordBytes:]
@@ -350,7 +423,7 @@ func parseGlobal(body []byte) (domain.WaylandGlobal, bool) {
 
 // parseError turns a wl_display.error event into a Go error.
 func parseError(body []byte) error {
-	if len(body) < fixedBody {
+	if len(body) < requestSize {
 		return ErrProtocol
 	}
 
@@ -360,7 +433,7 @@ func parseError(body []byte) error {
 
 	return fmt.Errorf(
 		"linuxdesktop: wayland protocol error %d: %s",
-		code, text(body[fixedBody:], length),
+		code, text(body[requestSize:], length),
 	)
 }
 
@@ -400,25 +473,38 @@ func displayName(env *domain.Env) string {
 // inherited reports the connected socket a compositor handed down when there is
 // no path to dial, and nothing when there is none.
 func inherited(env *domain.Env) *domain.WaylandInfo {
-	fd, ok := inheritedFD(env)
+	descriptor, ok := inheritedFD(env)
 	if !ok {
 		return nil
 	}
 
-	return &domain.WaylandInfo{Display: env.WaylandDisplay, SocketFD: fd}
+	return &domain.WaylandInfo{
+		Display:  env.WaylandDisplay,
+		SocketFD: descriptor,
+		Globals:  nil,
+	}
 }
 
 // inheritedFD reads $WAYLAND_SOCKET. The descriptor is only ever reported,
 // never consumed: it belongs to the host application.
 func inheritedFD(env *domain.Env) (int, bool) {
 	if env.WaylandSocket == noValue {
-		return noFD, false
+		return wireZero, false
 	}
 
-	fd, err := strconv.Atoi(env.WaylandSocket)
-	if err != nil || fd < noFD {
-		return noFD, false
+	descriptor, err := strconv.Atoi(env.WaylandSocket)
+	if err != nil || descriptor < wireZero {
+		return wireZero, false
 	}
 
-	return fd, true
+	return descriptor, true
+}
+
+func registryError(err error) error {
+	callErr := finished(err)
+	if callErr != nil {
+		return fmt.Errorf("wayland: collect globals: %w", callErr)
+	}
+
+	return nil
 }

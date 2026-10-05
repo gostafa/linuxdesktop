@@ -6,6 +6,7 @@ package gl
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -16,42 +17,66 @@ import (
 	"github.com/gostafa/linuxdesktop/internal/sysfs"
 )
 
-// New returns a stack probe. Pass native to enable the dlopen path.
-func New(useNative bool) Probe { return Probe{native: useNative} }
+// New returns a graphics stack probe that reads installed manifests.
+func New() Probe {
+	return func(ctx context.Context) (domain.OpenGLInfo, domain.VulkanInfo, error) { return stack("", ctx) }
+}
 
-// Stack reports the OpenGL and Vulkan implementations. The manifest scan
-// always runs, so the native path only ever adds detail, never removes it.
-func (probe Probe) Stack(_ context.Context) (domain.OpenGLInfo, domain.VulkanInfo, error) {
-	opengl := openglFromManifests()
-	vulkan := vulkanFromManifests()
+// NewNative returns a stack probe that also queries native graphics drivers.
+func NewNative() Probe {
+	return func(ctx context.Context) (domain.OpenGLInfo, domain.VulkanInfo, error) { return nativeStack("", ctx) }
+}
 
-	if !probe.native {
-		return opengl, vulkan, nil
-	}
-
-	if version, ok := native.Vulkan(); ok {
-		vulkan.Available = true
-		vulkan.Version = version
-	}
-
-	if live, ok := native.OpenGL(); ok {
-		merge(&opengl, &live)
-	}
+// stack reports the OpenGL and Vulkan implementations from installed manifests.
+func stack(files string, _ context.Context) (domain.OpenGLInfo, domain.VulkanInfo, error) {
+	opengl := openglFromManifests(files)
+	vulkan := vulkanFromManifests(files)
 
 	return opengl, vulkan, nil
 }
 
+// nativeStack augments the manifest result with details from live drivers.
+func nativeStack(files string, ctx context.Context) (domain.OpenGLInfo, domain.VulkanInfo, error) {
+	opengl, vulkan, err := stack(files, ctx)
+
+	augmentGL(&opengl, native.OpenGL)
+	augmentVulkan(&vulkan, native.Vulkan)
+
+	if err != nil {
+		return opengl, vulkan, fmt.Errorf("gl: query native stack: %w", err)
+	}
+	return opengl, vulkan, nil
+}
+
+func augmentVulkan(vulkan *domain.VulkanInfo, read func() (string, bool)) {
+	if version, ok := read(); ok {
+		vulkan.Available = true
+		vulkan.Version = version
+	}
+}
+
+func augmentGL(opengl *domain.OpenGLInfo, read func() (domain.OpenGLInfo, bool)) {
+	if live, ok := read(); ok {
+		merge(opengl, &live)
+	}
+}
+
 // openglFromManifests establishes that OpenGL is installed, and infers the
 // vendor from whichever driver library the manifests name.
-func openglFromManifests() domain.OpenGLInfo {
-	info := fromEGLVendors()
+func openglFromManifests(files string) domain.OpenGLInfo {
+	info := fromEGLVendors(files)
 	if info.Available {
 		return info
 	}
 
 	// No glvnd manifests: fall back to the presence of Mesa's DRI drivers.
-	if hasDRIDrivers() {
-		return domain.OpenGLInfo{Available: true, Vendor: vendorMesa}
+	if hasDRIDrivers(files) {
+		return domain.OpenGLInfo{
+			Available: true,
+			Vendor:    vendorMesa,
+			Renderer:  "",
+			Version:   "",
+		}
 	}
 
 	return info
@@ -59,18 +84,21 @@ func openglFromManifests() domain.OpenGLInfo {
 
 // fromEGLVendors reads the glvnd manifests whose presence is what makes OpenGL
 // usable through glvnd at all.
-func fromEGLVendors() domain.OpenGLInfo {
+func fromEGLVendors(files string) domain.OpenGLInfo {
+	eglVendorDirs := eglVendorDirs()
+
 	var info domain.OpenGLInfo
 
-	for i := range eglVendorDirs {
-		found := readManifests(eglVendorDirs[i])
-		for idx := range found {
-			info.Available = true
-			info.Vendor = orVendor(info.Vendor, found[idx].ICD.LibraryPath)
-		}
-	}
+	eachManifest(files, eglVendorDirs, eglVendor(&info))
 
 	return info
+}
+
+func eglVendor(info *domain.OpenGLInfo) func(*manifest) {
+	return func(found *manifest) {
+		info.Available = true
+		info.Vendor = orVendor(info.Vendor, found.ICD.LibraryPath)
+	}
 }
 
 // orVendor keeps the first vendor a manifest named, since the first glvnd
@@ -85,12 +113,14 @@ func orVendor(known, library string) string {
 
 // hasDRIDrivers reports whether Mesa's DRI drivers are installed, which is the
 // fallback evidence that OpenGL is present on a system without glvnd.
-func hasDRIDrivers() bool {
-	return slices.ContainsFunc(driDirs, hasDRIDriver)
+func hasDRIDrivers(files string) bool {
+	driDirs := driDirs()
+
+	return slices.ContainsFunc(driDirs, func(dir string) bool { return hasDRIDriver(files, dir) })
 }
 
-func hasDRIDriver(dir string) bool {
-	names, err := sysfs.DirNames(dir)
+func hasDRIDriver(files, dir string) bool {
+	names, err := sysfs.DirNames(sysfs.Path(files, dir))
 	if err != nil {
 		return false
 	}
@@ -105,18 +135,26 @@ func hasDRIDriver(dir string) bool {
 }
 
 // vulkanFromManifests reports the highest API version any installed ICD claims.
-func vulkanFromManifests() domain.VulkanInfo {
+func vulkanFromManifests(files string) domain.VulkanInfo {
+	vulkanICDDirs := vulkanICDDirs()
+
 	var info domain.VulkanInfo
 
-	for i := range vulkanICDDirs {
-		found := readManifests(vulkanICDDirs[i])
-		for idx := range found {
-			info.Available = true
-			info.Version = newer(info.Version, found[idx].ICD.APIVersion)
-		}
-	}
+	eachManifest(files, vulkanICDDirs, func(found *manifest) {
+		info.Available = true
+		info.Version = newer(info.Version, found.ICD.APIVersion)
+	})
 
 	return info
+}
+
+func eachManifest(files string, dirs []string, visit func(*manifest)) {
+	for i := range dirs {
+		found := readManifests(files, dirs[i])
+		for idx := range found {
+			visit(&found[idx])
+		}
+	}
 }
 
 // newer keeps whichever of two dotted versions is the higher one.
@@ -128,8 +166,8 @@ func newer(current, candidate string) string {
 	return current
 }
 
-func readManifests(dir string) []manifest {
-	names, err := sysfs.DirNames(dir)
+func readManifests(files, dir string) []manifest {
+	names, err := sysfs.DirNames(sysfs.Path(files, dir))
 	if err != nil {
 		return nil
 	}
@@ -137,7 +175,7 @@ func readManifests(dir string) []manifest {
 	out := make([]manifest, zero, len(names))
 
 	for i := range names {
-		found, ok := readManifest(dir, names[i])
+		found, ok := readManifest(files, dir, names[i])
 		if !ok {
 			continue
 		}
@@ -150,14 +188,16 @@ func readManifests(dir string) []manifest {
 
 // readManifest decodes one manifest, skipping anything that is not JSON or does
 // not parse.
-func readManifest(dir, name string) (manifest, bool) {
+func readManifest(files, dir, name string) (manifest, bool) {
+	var empty manifest
+
 	if !strings.HasSuffix(name, jsonSuffix) {
-		return manifest{}, false
+		return empty, false
 	}
 
-	data, err := sysfs.Bytes(filepath.Join(dir, name))
+	data, err := sysfs.Bytes(sysfs.Path(files, filepath.Join(dir, name)))
 	if err != nil {
-		return manifest{}, false
+		return empty, false
 	}
 
 	var found manifest
@@ -187,6 +227,8 @@ func orKeep(known, live string) string {
 }
 
 func vendorOf(library string) string {
+	driverVendors := driverVendors()
+
 	lower := strings.ToLower(filepath.Base(library))
 
 	for i := range driverVendors {

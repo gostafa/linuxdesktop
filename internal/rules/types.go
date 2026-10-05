@@ -3,30 +3,41 @@
 
 package rules
 
-import "github.com/gostafa/linuxdesktop/internal/domain"
+import (
+	"github.com/gostafa/linuxdesktop/internal/domain"
+)
 
 type (
 	// match is one identified compositor: the enum value plus the name actually
 	// observed, which matters for the compositors that have no enum value.
-	match struct {
-		kind domain.CompositorKind
+	match = identity[domain.CompositorKind]
+
+	// identity associates a classification key with the observed name.
+	identity[K any] struct {
+		kind K
 		name string
 	}
 
 	// fingerprint ties a Wayland interface name to the compositor that is the
 	// only one to advertise it.
-	fingerprint struct {
+	fingerprint = interfaceFingerprint[match]
+
+	// interfaceFingerprint maps a protocol interface to an identified implementation.
+	interfaceFingerprint[M any] struct {
+		match M
 		iface string
-		match
 	}
 
 	// verdict is one identified compositor together with the method that found
 	// it and how far that method can be trusted.
-	verdict struct {
-		match
+	verdict = classified[match, domain.DetectionConfidence, domain.DetectionMethod]
 
-		confidence domain.DetectionConfidence
-		method     domain.DetectionMethod
+	// classified combines an identity with its confidence and evidence source.
+	classified[M, C, D any] struct {
+		match M
+
+		confidence C
+		method     D
 	}
 
 	// rung is one step of the compositor detection ladder.

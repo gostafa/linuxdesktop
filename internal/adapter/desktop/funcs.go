@@ -12,44 +12,59 @@ import (
 )
 
 // New returns a desktop probe. bus may be nil to skip the version lookup.
-func New(bus port.Bus) *Probe { return &Probe{bus: bus} }
+func New(bus port.Bus) Probe {
+	return func(ctx context.Context, env *domain.Env) (domain.DesktopInfo, error) { return desktop(ctx, env, bus) }
+}
 
 // Desktop identifies the desktop environment and, where one is cheaply
 // available, its version.
-func (p *Probe) Desktop(ctx context.Context, env *domain.Env) (domain.DesktopInfo, error) {
+func desktop(ctx context.Context, env *domain.Env, bus port.Bus) (domain.DesktopInfo, error) {
 	info := rules.Desktop(env)
 
-	info.Version = p.version(ctx, env, info.Environment)
+	info.Version = env.KDESessionVersion
+
+	info.Version = version(ctx, &info, bus)
 
 	return info, nil
 }
 
-func (p *Probe) version(ctx context.Context, env *domain.Env, de domain.DesktopEnvironment) string {
-	switch de {
+func version(
+	ctx context.Context,
+	info *domain.DesktopInfo,
+	bus port.Bus,
+) string {
+	switch info.Environment {
 	case domain.DesktopGNOME:
-		if p.bus == nil {
-			return ""
-		}
-
-		v, err := p.bus.Property(
-			ctx,
-			port.SessionBus,
-			shellName,
-			shellPath,
-			shellIface,
-			shellVersion,
-		)
-		if err != nil {
-			return ""
-		}
-
-		s, _ := v.(string)
-
-		return s
+		return gnomeVersion(ctx, bus)
 	case domain.DesktopKDE:
-		// Major version only; Plasma exposes nothing finer without a subprocess.
-		return env.KDESessionVersion
+		return info.Version
+	default:
+		return ""
+	}
+}
+
+func gnomeVersion(ctx context.Context, bus port.Bus) string {
+	if bus == nil {
+		return ""
 	}
 
-	return ""
+	value, err := bus.Property(
+		ctx,
+		port.SessionBus,
+		&port.PropertyQuery{
+			Object:    port.Object{Destination: shellName, Path: shellPath},
+			Interface: shellName,
+			Name:      shellVersion,
+		},
+	)
+	if err != nil {
+		return ""
+	}
+
+	s, ok := value.(string)
+	if !ok {
+		return ""
+	}
+
+	return s
 }

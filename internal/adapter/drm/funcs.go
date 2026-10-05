@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,34 +19,41 @@ import (
 )
 
 // New returns a DRM probe.
-func New() Probe { return Probe{} }
+func New() Probe {
+	return func(ctx context.Context) ([]domain.GPUInfo, string, error) { return gpus("", ctx) }
+}
 
 // GPUs enumerates the DRM cards and returns them along with the id of the
 // primary one, which is the card the firmware posted. A machine with no DRM
 // devices is not an error: that is what a headless server looks like.
-func (Probe) GPUs(_ context.Context) ([]domain.GPUInfo, string, error) {
-	entries, err := sysfs.DirNames(classDir)
+func gpus(files string, _ context.Context) ([]domain.GPUInfo, string, error) {
+	entries, err := sysfs.DirNames(sysfs.Path(files, classDir))
 	if err != nil {
 		return nil, noValue, nil
 	}
 
 	slices.Sort(entries)
 
-	gpus, primary := collect(entries)
+	gpus, primary := collect(files, entries)
 
-	err = resolveModels(gpus)
+	err = resolveModels(files, gpus)
 
 	return gpus, orFirst(primary, gpus), err
 }
 
 // newPCIScan prepares a scan for the names the NVIDIA listing did not supply.
 func newPCIScan(pending map[string]map[string][]int, gpus []domain.GPUInfo) *pciScan {
-	return &pciScan{pending: pending, gpus: gpus, left: countPending(pending)}
+	return &pciScan{
+		pending:  pending,
+		setModel: func(index int, model string) { gpus[index].Model = model },
+		left:     countPending(pending),
+		devices:  nil,
+	}
 }
 
 // device handles one indented device line under the vendor currently selected,
 // reporting true when nothing is left to name.
-func (scan *pciScan) device(entry []byte) bool {
+func device(scan *pciScan, entry []byte) bool {
 	if scan.devices == nil || len(entry) < idFieldWidth || entry[zero] == indentByte {
 		return false // no interest in this vendor, or a subsystem line
 	}
@@ -57,7 +65,7 @@ func (scan *pciScan) device(entry []byte) bool {
 		return false
 	}
 
-	scan.name(indices, strings.TrimSpace(string(entry[idFieldWidth:])))
+	name(scan, indices, strings.TrimSpace(string(entry[idFieldWidth:])))
 	delete(scan.devices, id)
 
 	return scan.left <= zero
@@ -66,7 +74,7 @@ func (scan *pciScan) device(entry []byte) bool {
 // line handles one line of the listing, reporting true when nothing is left to
 // name. A line flush against the margin selects a vendor; an indented one
 // names a device under it.
-func (scan *pciScan) line(line []byte) bool {
+func line(scan *pciScan, line []byte) bool {
 	if len(line) < idFieldWidth || line[zero] == commentByte {
 		return false
 	}
@@ -77,13 +85,13 @@ func (scan *pciScan) line(line []byte) bool {
 		return false
 	}
 
-	return scan.device(line[indentWidth:])
+	return device(scan, line[indentWidth:])
 }
 
 // name assigns a model to every GPU that was waiting on one device id.
-func (scan *pciScan) name(indices []int, model string) {
+func name(scan *pciScan, indices []int, model string) {
 	for i := range indices {
-		scan.gpus[indices[i]].Model = model
+		scan.setModel(indices[i], model)
 	}
 
 	scan.left -= len(indices)
@@ -91,27 +99,32 @@ func (scan *pciScan) name(indices []int, model string) {
 
 // run reads the listing, or as much of it as it takes to name every GPU that is
 // still waiting.
-func (scan *pciScan) run(file io.Reader) error {
+func run(scan *pciScan, file io.Reader) error {
 	lines := bufio.NewScanner(file)
 	for lines.Scan() {
-		if scan.line(lines.Bytes()) {
+		if line(scan, lines.Bytes()) {
 			return nil
 		}
 	}
 
-	return lines.Err()
+	callErr := lines.Err()
+	if callErr != nil {
+		return fmt.Errorf("drm: scan PCI identifiers: %w", callErr)
+	}
+
+	return nil
 }
 
 // collect builds one GPUInfo per DRM card and names the one the firmware
 // posted, which is the only card that carries a boot_vga marker.
-func collect(entries []string) ([]domain.GPUInfo, string) {
-	nodes := renderNodesByAddress(entries)
-	gpus := slices.Grow([]domain.GPUInfo(nil), expectedGPUs)
-	primary := noValue
+func collect(files string, entries []string) (gpus []domain.GPUInfo, primary string) {
+	nodes := renderNodesByAddress(files, entries)
+	gpus = slices.Grow([]domain.GPUInfo(nil), expectedGPUs)
+	primary = noValue
 
 	found := cards(entries)
 	for i := range found {
-		gpu, boot := describe(found[i], nodes)
+		gpu, boot := describe(files, found[i], nodes)
 
 		gpus = append(gpus, gpu)
 
@@ -139,30 +152,30 @@ func cards(entries []string) []string {
 
 // describe reads everything sysfs knows about one card, and reports whether the
 // firmware posted it.
-func describe(entry string, nodes map[string]string) (domain.GPUInfo, bool) {
+func describe(files, entry string, nodes map[string]string) (domain.GPUInfo, bool) {
 	base := filepath.Join(classDir, entry)
 	gpu := domain.GPUInfo{
 		ID:         entry,
-		VendorID:   sysfs.Trimmed(filepath.Join(base, attrVendor)),
-		DeviceID:   sysfs.Trimmed(filepath.Join(base, attrDevice)),
-		PCIAddress: sysfs.LinkBase(filepath.Join(base, linkDevice)),
+		VendorID:   sysfs.Trimmed(sysfs.Path(files, filepath.Join(base, attrVendor))),
+		DeviceID:   sysfs.Trimmed(sysfs.Path(files, filepath.Join(base, attrDevice))),
+		PCIAddress: sysfs.LinkBase(sysfs.Path(files, filepath.Join(base, linkDevice))),
 		DRMDevice:  filepath.Join(deviceDir, entry),
 	}
 
-	applyUevent(&gpu, base)
+	applyUevent(files, &gpu, base)
 
 	gpu.RenderDevice = nodes[gpu.PCIAddress]
-	gpu.Vendor = vendorNames[gpu.VendorID]
+	gpu.Vendor = vendorNames(gpu.VendorID)
 
 	classify(&gpu)
 
-	return gpu, sysfs.Trimmed(filepath.Join(base, attrBootVGA)) == "1"
+	return gpu, sysfs.Trimmed(sysfs.Path(files, filepath.Join(base, attrBootVGA))) == "1"
 }
 
 // applyUevent overlays the driver name and the PCI slot the kernel reports,
 // which is more reliable than the device symlink when both are present.
-func applyUevent(gpu *domain.GPUInfo, base string) {
-	data, err := sysfs.Bytes(filepath.Join(base, attrUevent))
+func applyUevent(files string, gpu *domain.GPUInfo, base string) {
+	data, err := sysfs.Bytes(sysfs.Path(files, filepath.Join(base, attrUevent)))
 	if err != nil {
 		return
 	}
@@ -194,7 +207,7 @@ func classify(gpu *domain.GPUInfo) {
 		return
 	}
 
-	if alwaysDiscrete[gpu.VendorID] {
+	if alwaysDiscrete(gpu.VendorID) {
 		gpu.Discrete = true
 
 		return
@@ -212,7 +225,7 @@ func classify(gpu *domain.GPUInfo) {
 // renderNodesByAddress maps a PCI address to its /dev/dri/renderD* path, by
 // resolving each render node's device link to the same device the card points
 // at.
-func renderNodesByAddress(entries []string) map[string]string {
+func renderNodesByAddress(files string, entries []string) map[string]string {
 	nodes := make(map[string]string, expectedGPUs)
 
 	for i := range entries {
@@ -220,7 +233,9 @@ func renderNodesByAddress(entries []string) map[string]string {
 			continue
 		}
 
-		address := sysfs.LinkBase(filepath.Join(classDir, entries[i], linkDevice))
+		address := sysfs.LinkBase(
+			sysfs.Path(files, filepath.Join(classDir, entries[i], linkDevice)),
+		)
 		if address == noValue {
 			continue
 		}
@@ -233,29 +248,29 @@ func renderNodesByAddress(entries []string) map[string]string {
 
 // resolveModels fills in Model for every GPU, preferring NVIDIA's own listing
 // and otherwise streaming pci.ids exactly once.
-func resolveModels(gpus []domain.GPUInfo) error {
-	pending := pendingModels(gpus)
+func resolveModels(files string, gpus []domain.GPUInfo) error {
+	pending := pendingModels(files, gpus)
 	if len(pending) == zero {
 		return nil
 	}
 
-	file := openPCIIDs()
+	file := openPCIIDs(files)
 	if file == nil {
 		return nil
 	}
 
 	scan := newPCIScan(pending, gpus)
 
-	return errors.Join(scan.run(file), file.Close())
+	return errors.Join(run(scan, file), file.Close())
 }
 
 // pendingModels names every GPU it can from NVIDIA's own listing and returns
 // the pci.ids lookups still wanted, keyed by vendor and then by device id.
-func pendingModels(gpus []domain.GPUInfo) map[string]map[string][]int {
+func pendingModels(files string, gpus []domain.GPUInfo) map[string]map[string][]int {
 	pending := make(map[string]map[string][]int, expectedGPUs)
 
 	for i := range gpus {
-		vendor, device, ok := modelLookup(&gpus[i])
+		vendor, device, ok := modelLookup(files, &gpus[i])
 		if !ok {
 			continue
 		}
@@ -273,8 +288,8 @@ func pendingModels(gpus []domain.GPUInfo) map[string]map[string][]int {
 // modelLookup settles where a GPU's model comes from. NVIDIA's proprietary
 // driver publishes a marketing name, which wins outright; otherwise the device
 // id stands in until pci.ids supplies a real one.
-func modelLookup(gpu *domain.GPUInfo) (vendor, device string, ok bool) {
-	model := nvidiaModelFor(gpu)
+func modelLookup(files string, gpu *domain.GPUInfo) (vendor, device string, ok bool) {
+	model := nvidiaModelFor(files, gpu)
 	if model != noValue {
 		gpu.Model = model
 
@@ -303,12 +318,14 @@ func countPending(pending map[string]map[string][]int) int {
 }
 
 // nvidiaModelFor reads the marketing name the proprietary driver publishes.
-func nvidiaModelFor(gpu *domain.GPUInfo) string {
+func nvidiaModelFor(files string, gpu *domain.GPUInfo) string {
 	if !nvidia(gpu) {
 		return noValue
 	}
 
-	data, err := sysfs.Bytes(filepath.Join(nvidiaGPUDir, gpu.PCIAddress, nvidiaInfo))
+	data, err := sysfs.Bytes(
+		sysfs.Path(files, filepath.Join(nvidiaGPUDir, gpu.PCIAddress, nvidiaInfo)),
+	)
 	if err != nil {
 		return noValue
 	}
@@ -335,9 +352,11 @@ func modelLine(data []byte) string {
 	return noValue
 }
 
-func openPCIIDs() *os.File {
+func openPCIIDs(files string) *os.File {
+	pciIDsPaths := pciIDsPaths()
+
 	for i := range pciIDsPaths {
-		if file, err := os.Open(pciIDsPaths[i]); err == nil {
+		if file, err := os.Open(sysfs.Path(files, pciIDsPaths[i])); err == nil {
 			return file
 		}
 	}

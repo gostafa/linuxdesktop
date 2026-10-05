@@ -35,3 +35,7 @@ const (
 	// noValue is the answer for an absent key or an unreadable file.
 	noValue = ""
 )
+
+const (
+	errReadChunk = "sysfs: read chunk: %w"
+)

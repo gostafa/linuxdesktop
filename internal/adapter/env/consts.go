@@ -3,8 +3,8 @@
 
 package env
 
-// Standard XDG and display-server variables.
 const (
+	// Standard XDG and display-server variables.
 	keySessionID      = "XDG_SESSION_ID"
 	keySessionType    = "XDG_SESSION_TYPE"
 	keySessionDesktop = "XDG_SESSION_DESKTOP"
@@ -21,11 +21,9 @@ const (
 	keyDisplay        = "DISPLAY"
 	keyUser           = "USER"
 	keyLogname        = "LOGNAME"
-)
 
-// Compositor-specific variables. Each of these is set by exactly one
-// compositor, which makes them the strongest and cheapest detection signal.
-const (
+	// Compositor-specific variables. Each of these is set by exactly one
+	// compositor, which makes them the strongest and cheapest detection signal.
 	keyHyprlandSignature = "HYPRLAND_INSTANCE_SIGNATURE"
 	keySwaySock          = "SWAYSOCK"
 	keyWayfireSocket     = "WAYFIRE_SOCKET"
@@ -34,10 +32,8 @@ const (
 	keyKDESessionVersion = "KDE_SESSION_VERSION"
 	keyGNOMESessionID    = "GNOME_DESKTOP_SESSION_ID"
 	keyGNOMESetupDisplay = "GNOME_SETUP_DISPLAY"
-)
 
-// Remote-session markers.
-const (
+	// Remote-session markers.
 	keySSHConnection = "SSH_CONNECTION"
 	keySSHTTY        = "SSH_TTY"
 	keySSHClient     = "SSH_CLIENT"

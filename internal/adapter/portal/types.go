@@ -5,22 +5,25 @@ package portal
 
 import (
 	"github.com/gostafa/linuxdesktop/internal/domain"
-	"github.com/gostafa/linuxdesktop/internal/port"
+	"github.com/gostafa/linuxdesktop/internal/probe"
 )
 
 type (
 	// Probe implements port.PortalProbe.
-	Probe struct {
-		bus port.Bus
-	}
+	Probe = probe.PortalFunc[domain.Env, domain.PortalInfo]
 
 	// node is the subset of D-Bus introspection XML this package needs: the
 	// list of interfaces exported by an object.
-	node struct {
-		Interfaces []iface `xml:"interface"`
+	node = interfaceNode[iface]
+
+	// interfaceNode decodes an XML interface listing with a caller-selected entry type.
+	interfaceNode[I any] struct {
+		// Interfaces interfaces exported by the introspected D-Bus object.
+		Interfaces []I `xml:"interface"`
 	}
 
 	iface struct {
+		// Name fully qualified D-Bus interface name.
 		Name string `xml:"name,attr"`
 	}
 

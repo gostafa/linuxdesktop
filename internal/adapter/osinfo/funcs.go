@@ -13,33 +13,41 @@ import (
 )
 
 // New returns an OS probe.
-func New() Probe { return Probe{} }
+func New() Probe { return operatingSystem("") }
 
 // OS reads the distribution and kernel identity. A missing os-release is not
 // an error: minimal containers legitimately have none, and the kernel fields
 // are still worth reporting.
-func (Probe) OS(_ context.Context) (domain.OSInfo, error) {
-	info := kernelInfo()
+func operatingSystem(root string) Probe {
+	return func(_ context.Context) (domain.OSInfo, error) {
+		info := kernelInfo(root, runtime.GOOS, runtime.GOARCH)
 
-	applyOSRelease(&info)
+		applyOSRelease(root, &info)
 
-	if info.PrettyName == noValue {
-		info.PrettyName = info.Name
+		if info.PrettyName == noValue {
+			info.PrettyName = info.Name
+		}
+
+		return info, nil
 	}
-
-	return info, nil
 }
 
 // kernelInfo is everything the kernel and the runtime know without reading
 // os-release.
-func kernelInfo() domain.OSInfo {
+func kernelInfo(root, goos, arch string) domain.OSInfo {
 	info := domain.OSInfo{
-		Kernel:        sysfs.Trimmed(pathKernelType),
-		KernelRelease: sysfs.Trimmed(pathKernelRelase),
-		Architecture:  architecture(),
-		Hostname:      hostname(),
+		Kernel:        sysfs.Trimmed(sysfs.Path(root, pathKernelType)),
+		KernelRelease: sysfs.Trimmed(sysfs.Path(root, pathKernelRelase)),
+		Architecture:  architecture(arch),
+		Hostname:      hostname(os.Hostname),
+		ID:            "",
+		IDLike:        "",
+		Name:          "",
+		PrettyName:    "",
+		Version:       "",
+		VersionID:     "",
 	}
-	if info.Kernel == noValue && runtime.GOOS == goosLinux {
+	if info.Kernel == noValue && goos == goosLinux {
 		info.Kernel = kernelLinux
 	}
 
@@ -47,10 +55,10 @@ func kernelInfo() domain.OSInfo {
 }
 
 // applyOSRelease overlays whatever the distribution says about itself.
-func applyOSRelease(info *domain.OSInfo) {
-	data, err := sysfs.Bytes(pathOSRelease)
+func applyOSRelease(root string, info *domain.OSInfo) {
+	data, err := sysfs.Bytes(sysfs.Path(root, pathOSRelease))
 	if err != nil {
-		data, err = sysfs.Bytes(pathOSReleaseAlt)
+		data, err = sysfs.Bytes(sysfs.Path(root, pathOSReleaseAlt))
 	}
 
 	if err != nil {
@@ -82,8 +90,8 @@ func releaseSetters() map[string]releaseSetter {
 	}
 }
 
-func hostname() string {
-	name, err := os.Hostname()
+func hostname(read func() (string, error)) string {
+	name, err := read()
 	if err != nil {
 		return noValue
 	}
@@ -92,10 +100,10 @@ func hostname() string {
 }
 
 // architecture reports the machine name in uname(2) spelling.
-func architecture() string {
-	if name, ok := archNames[runtime.GOARCH]; ok {
+func architecture(arch string) string {
+	if name, ok := archNames(arch); ok {
 		return name
 	}
 
-	return runtime.GOARCH
+	return arch
 }

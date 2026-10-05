@@ -3,6 +3,8 @@
 
 package domain
 
+import "github.com/gostafa/linuxdesktop/internal/schema"
+
 type (
 	// CompositorKind is a recognized window manager or Wayland compositor.
 	CompositorKind string
@@ -15,13 +17,5 @@ type (
 
 	// CompositorInfo identifies the compositor or window manager, and says how
 	// certain that identification is.
-	CompositorInfo struct {
-		Kind       CompositorKind      `json:"kind"`
-		Name       string              `json:"name"`
-		Version    string              `json:"version,omitempty"`
-		Confidence DetectionConfidence `json:"confidence"`
-		DetectedBy DetectionMethod     `json:"detected_by"`
-		Wayland    bool                `json:"wayland"`
-		X11        bool                `json:"x11"`
-	}
+	CompositorInfo = schema.CompositorInfo[CompositorKind, DetectionConfidence, DetectionMethod]
 )

@@ -53,3 +53,9 @@ const (
 	// noValue is an unreadable sysfs attribute or an unnamed device.
 	noValue = ""
 )
+
+const (
+	vendorAMD    = "AMD"
+	vendorNvidia = "NVIDIA"
+	vendorRedHat = "Red Hat"
+)

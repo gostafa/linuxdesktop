@@ -3,7 +3,9 @@
 
 package wayland
 
-import "errors"
+import (
+	"errors"
+)
 
 var (
 	// ErrProtocol reports a frame that does not conform to the Wayland wire

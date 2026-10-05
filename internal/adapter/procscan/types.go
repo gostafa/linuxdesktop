@@ -8,6 +8,7 @@ type (
 	// worth confirming ownership of.
 	Probe struct {
 		filter func(string) bool
+		root   string
 	}
 
 	// scanner walks /proc once, collecting the command names of this user's
@@ -15,6 +16,7 @@ type (
 	// multi-process desktop produces in quantity.
 	scanner struct {
 		filter  func(string) bool
+		root    string
 		seen    map[string]bool
 		uid     string
 		matches []string

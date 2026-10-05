@@ -3,44 +3,43 @@
 
 package domain
 
+import "github.com/gostafa/linuxdesktop/internal/schema"
+
 type (
 	// DisplayProtocol is the windowing protocol the process should speak.
 	DisplayProtocol string
 
 	// DisplayInfo describes which display servers are reachable.
-	DisplayInfo struct {
-		X11              *X11Info        `json:"x11,omitempty"`
-		Wayland          *WaylandInfo    `json:"wayland,omitempty"`
-		Protocol         DisplayProtocol `json:"protocol"`
-		WaylandDisplay   string          `json:"wayland_display"`
-		X11Display       string          `json:"x11_display"`
-		X11Available     bool            `json:"x11_available"`
-		WaylandAvailable bool            `json:"wayland_available"`
-		XWayland         bool            `json:"xwayland"`
-	}
+	DisplayInfo = schema.DisplayInfo[X11Info, WaylandInfo, DisplayProtocol]
 
 	// X11Info is the result of a real connection to an X server.
 	X11Info struct {
-		Display       string   `json:"display"`
-		Vendor        string   `json:"vendor"`
-		WindowManager string   `json:"window_manager"`
-		Extensions    []string `json:"extensions,omitempty"`
-		Screen        int      `json:"screen"`
-		ProtocolMajor int      `json:"protocol_major"`
-		ProtocolMinor int      `json:"protocol_minor"`
+		// Display x display address used for the connection.
+		Display string `json:"display"`
+		// Vendor vendor name reported by the driver or server.
+		Vendor string `json:"vendor"`
+		// WindowManager window manager name from EWMH properties.
+		WindowManager string `json:"window_manager"`
+		// Extensions extension names advertised by the X server.
+		Extensions []string `json:"extensions,omitempty"`
+		// Screen default X screen index.
+		Screen int `json:"screen"`
+		// ProtocolMajor major version of the X protocol.
+		ProtocolMajor int `json:"protocol_major"`
+		// ProtocolMinor minor version of the X protocol.
+		ProtocolMinor int `json:"protocol_minor"`
 	}
 
 	// WaylandInfo is the result of a real connection to a Wayland compositor.
-	WaylandInfo struct {
-		Display  string          `json:"display"`
-		Globals  []WaylandGlobal `json:"globals,omitempty"`
-		SocketFD int             `json:"socket_fd,omitempty"`
-	}
+	WaylandInfo = schema.WaylandInfo[WaylandGlobal]
 
 	// WaylandGlobal is one entry from the compositor's global registry.
 	WaylandGlobal struct {
+		// Interface fully qualified Wayland interface name.
 		Interface string `json:"interface"`
-		Name      uint32 `json:"name"`
-		Version   uint32 `json:"version"`
+		// Name numeric object name assigned by the Wayland registry.
+		Name uint32 `json:"name"`
+		// Version version reported by the source, when available.
+		Version uint32 `json:"version"`
 	}
 )

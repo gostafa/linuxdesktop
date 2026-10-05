@@ -5,6 +5,7 @@ package x11
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/gostafa/linuxdesktop/internal/domain"
@@ -14,7 +15,7 @@ import (
 )
 
 // New returns an X11 probe.
-func New() Probe { return Probe{} }
+func New() Probe { return x11 }
 
 // Available is a cheap test for an X server, doing no more than a stat. A
 // display on a remote host is reported as available without verification,
@@ -36,14 +37,26 @@ func Available(env *domain.Env) bool {
 // X11 connects to $DISPLAY and reports what the server says about itself. A
 // nil result with a nil error means there was no X server to talk to, which on
 // a pure Wayland or headless session is the expected outcome.
-func (Probe) X11(ctx context.Context, env *domain.Env) (*domain.X11Info, error) {
+func x11(ctx context.Context, env *domain.Env) (*domain.X11Info, error) {
+	result, err := queryDisplay(ctx, env, xgb.NewConnDisplay)
+	if err != nil {
+		return result, fmt.Errorf("x11: query display: %w", err)
+	}
+	return result, nil
+}
+
+func queryDisplay(
+	ctx context.Context,
+	env *domain.Env,
+	connect func(string) (*xgb.Conn, error),
+) (*domain.X11Info, error) {
 	if env.Display == noValue {
 		return nil, nil
 	}
 
-	conn, err := xgb.NewConnDisplay(env.Display)
+	conn, err := connect(env.Display)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("x11: connect display: %w", err)
 	}
 	defer conn.Close()
 
@@ -59,7 +72,7 @@ func (Probe) X11(ctx context.Context, env *domain.Env) (*domain.X11Info, error) 
 
 // resolve reads the three atoms back off the wire. Any the server does not know
 // comes back zero, which the property lookup treats as absent.
-func (cookies atomCookies) resolve() atomSet {
+func resolve(cookies atomCookies) atomSet {
 	return atomSet{
 		check: atomOf(cookies.check),
 		name:  atomOf(cookies.name),
@@ -69,9 +82,11 @@ func (cookies atomCookies) resolve() atomSet {
 
 // property names _NET_WM_NAME as a UTF8_STRING, or nothing at all when the
 // server knows neither atom.
-func (set atomSet) property() property {
+func atomProperty(set atomSet) property {
+	var empty property
+
 	if set.name == zero || set.utf8 == zero {
-		return property{}
+		return empty
 	}
 
 	return property{set.name, set.utf8}
@@ -131,9 +146,10 @@ func describe(conn *xgb.Conn, display string) *domain.X11Info {
 		ProtocolMajor: int(setup.ProtocolMajorVersion),
 		ProtocolMinor: int(setup.ProtocolMinorVersion),
 		Extensions:    extensions(extCookie),
+		WindowManager: "",
 	}
 
-	info.WindowManager = wmName(conn, setup, atoms.resolve())
+	info.WindowManager = wmName(conn, setup, resolve(atoms))
 
 	return info
 }
@@ -147,7 +163,7 @@ func wmName(conn *xgb.Conn, setup *xproto.SetupInfo, found atomSet) string {
 		return noValue
 	}
 
-	name := textProperty(conn, owner, found.property())
+	name := textProperty(conn, owner, atomProperty(found))
 	if name != noValue {
 		return name
 	}

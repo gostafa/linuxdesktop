@@ -2,7 +2,9 @@
 
 package native
 
-import "github.com/gostafa/linuxdesktop/internal/domain"
+import (
+	"github.com/gostafa/linuxdesktop/internal/domain"
+)
 
 // This file is the fallback for platforms purego does not support — Windows,
 // which has no dlopen, and the architectures whose assembly support is
@@ -19,4 +21,8 @@ import "github.com/gostafa/linuxdesktop/internal/domain"
 func Vulkan() (string, bool) { return "", false }
 
 // OpenGL reports nothing on an unsupported platform.
-func OpenGL() (domain.OpenGLInfo, bool) { return domain.OpenGLInfo{}, false }
+func OpenGL() (domain.OpenGLInfo, bool) {
+	var empty domain.OpenGLInfo
+
+	return empty, false
+}

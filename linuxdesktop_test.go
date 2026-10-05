@@ -47,7 +47,10 @@ func TestPublicAPIUsage(t *testing.T) {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	if cfg.Timeout != time.Second || cfg.ProbeTimeout != time.Millisecond || cfg.Sections != SectionOS || !cfg.NativeGL || !cfg.ProcessScan {
+	if cfg.Timeout != time.Second || cfg.ProbeTimeout != time.Millisecond ||
+		cfg.Sections != SectionOS ||
+		!cfg.NativeGL ||
+		!cfg.ProcessScan {
 		t.Fatalf("public options did not configure Config: %+v", cfg)
 	}
 }
@@ -91,9 +94,13 @@ func TestPublicAPIBoundary(t *testing.T) {
 	if err := scanner.Err(); err != nil {
 		t.Fatal(err)
 	}
-	loader := importer.ForCompiler(token.NewFileSet(), "gc", func(path string) (io.ReadCloser, error) {
-		return os.Open(files[path])
-	})
+	loader := importer.ForCompiler(
+		token.NewFileSet(),
+		"gc",
+		func(path string) (io.ReadCloser, error) {
+			return os.Open(files[path])
+		},
+	)
 	pkg, err := loader.Import(module)
 	if err != nil {
 		t.Fatal(err)
@@ -180,14 +187,18 @@ func TestPublicAPIBoundary(t *testing.T) {
 
 func TestConfig(t *testing.T) {
 	defaults := core.NewConfig()
-	if got := newConfig(nil); got != defaults {
+	if got := newConfig(nil); *got != defaults {
 		t.Fatalf("defaults: got %+v, want %+v", got, defaults)
 	}
 	for _, duration := range []time.Duration{0, -time.Second, time.Second} {
 		t.Run(duration.String(), func(t *testing.T) {
 			got := newConfig(WithTimeout(duration), WithProbeTimeout(duration), WithSections(0))
-			want := core.NewConfig(core.WithTimeout(duration), core.WithProbeTimeout(duration), core.WithSections(0))
-			if got != want {
+			want := core.NewConfig(
+				core.WithTimeout(duration),
+				core.WithProbeTimeout(duration),
+				core.WithSections(0),
+			)
+			if *got != want {
 				t.Fatalf("got %+v, want %+v", got, want)
 			}
 		})
@@ -195,7 +206,8 @@ func TestConfig(t *testing.T) {
 	got := newConfig(
 		WithTimeout(time.Second), nil,
 		func(c *Config) {
-			if c.Timeout != time.Second || c.ProbeTimeout != DefaultProbeTimeout || c.Sections != SectionAll {
+			if c.Timeout != time.Second || c.ProbeTimeout != DefaultProbeTimeout ||
+				c.Sections != SectionAll {
 				t.Fatalf("custom option received unexpected configuration: %+v", c)
 			}
 			c.Timeout = 3 * time.Second
@@ -203,9 +215,11 @@ func TestConfig(t *testing.T) {
 		WithTimeout(4*time.Second), WithProbeTimeout(time.Second),
 		WithSections(SectionOS|SectionGraphics), WithOpenGL(), WithProcessScan(),
 	)
-	want := core.Config{Timeout: 4 * time.Second, ProbeTimeout: time.Second,
-		Sections: domain.SectionOS | domain.SectionGraphics, NativeGL: true, ProcessScan: true}
-	if got != want {
+	want := core.Config{
+		Timeout: 4 * time.Second, ProbeTimeout: time.Second,
+		Sections: domain.SectionOS | domain.SectionGraphics, NativeGL: true, ProcessScan: true,
+	}
+	if *got != want {
 		t.Fatalf("ordered options: got %+v, want %+v", got, want)
 	}
 }
@@ -263,19 +277,24 @@ func TestEnvironmentConversion(t *testing.T) {
 	out.Display.Wayland.Globals[0].Interface = "changed"
 	out.Desktop.CurrentDesktops[0] = "changed"
 	out.Graphics.GPUs[0].ID = "changed"
-	if in.Display.X11.Extensions[0] == "changed" || in.Display.Wayland.Globals[0].Interface == "changed" ||
-		in.Desktop.CurrentDesktops[0] == "changed" || in.Graphics.GPUs[0].ID == "changed" {
+	if in.Display.X11.Extensions[0] == "changed" ||
+		in.Display.Wayland.Globals[0].Interface == "changed" ||
+		in.Desktop.CurrentDesktops[0] == "changed" ||
+		in.Graphics.GPUs[0].ID == "changed" {
 		t.Fatal("conversion shared mutable data")
 	}
 }
 
 func TestEnvironmentConversionOptionalValues(t *testing.T) {
 	out := assertJSONParity(t, &domain.Environment{})
-	if out.Display.X11 != nil || out.Display.Wayland != nil || out.Graphics.GPUs != nil || out.Desktop.CurrentDesktops != nil {
+	if out.Display.X11 != nil || out.Display.Wayland != nil || out.Graphics.GPUs != nil ||
+		out.Desktop.CurrentDesktops != nil {
 		t.Fatal("nil values were not preserved")
 	}
 	for _, empty := range []bool{false, true} {
-		in := &domain.Environment{Display: domain.DisplayInfo{X11: &domain.X11Info{}, Wayland: &domain.WaylandInfo{}}}
+		in := &domain.Environment{
+			Display: domain.DisplayInfo{X11: &domain.X11Info{}, Wayland: &domain.WaylandInfo{}},
+		}
 		if empty {
 			in.Display.X11.Extensions = []string{}
 			in.Display.Wayland.Globals = []domain.WaylandGlobal{}
@@ -283,8 +302,10 @@ func TestEnvironmentConversionOptionalValues(t *testing.T) {
 			in.Graphics.GPUs = []domain.GPUInfo{}
 		}
 		out = assertJSONParity(t, in)
-		if (out.Display.X11.Extensions != nil) != empty || (out.Display.Wayland.Globals != nil) != empty ||
-			(out.Desktop.CurrentDesktops != nil) != empty || (out.Graphics.GPUs != nil) != empty {
+		if (out.Display.X11.Extensions != nil) != empty ||
+			(out.Display.Wayland.Globals != nil) != empty ||
+			(out.Desktop.CurrentDesktops != nil) != empty ||
+			(out.Graphics.GPUs != nil) != empty {
 			t.Fatal("nil versus empty slices were not preserved")
 		}
 	}

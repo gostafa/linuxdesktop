@@ -10,11 +10,12 @@ import (
 )
 
 const (
-	// Defaults for a run. The overall budget is generous enough that a healthy
+	// DefaultTimeout bounds a run. The overall budget is generous enough that a healthy
 	// desktop never approaches it, and the per-probe budget is short enough
 	// that a single unresponsive server costs a fraction of a second rather
 	// than the lot.
-	DefaultTimeout      = 2 * time.Second
+	DefaultTimeout = 2 * time.Second
+	// DefaultProbeTimeout bounds each individual detection probe.
 	DefaultProbeTimeout = 500 * time.Millisecond
 
 	// sectionDisplayProbes is when the X11 and Wayland probes run. They feed
@@ -32,8 +33,12 @@ const (
 )
 
 // DefaultConfig is the configuration used when the caller supplies no options.
-var DefaultConfig = Config{
-	Timeout:      DefaultTimeout,
-	ProbeTimeout: DefaultProbeTimeout,
-	Sections:     domain.SectionAll,
+func DefaultConfig() Config {
+	return Config{
+		Timeout:      DefaultTimeout,
+		ProbeTimeout: DefaultProbeTimeout,
+		Sections:     domain.SectionAll,
+		NativeGL:     false,
+		ProcessScan:  false,
+	}
 }

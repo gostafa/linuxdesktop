@@ -5,6 +5,7 @@ package linuxdesktop
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"time"
 
@@ -24,12 +25,34 @@ import (
 	"github.com/gostafa/linuxdesktop/internal/rules"
 )
 
+var (
+	// Compile-time proof that every adapter still satisfies the port it is wired
+	// to. These cost nothing at runtime and catch a broken signature at build time
+	// rather than at the injection site.
+	_ port.EnvProbe     = env.Probe(nil)
+	_ port.OSProbe      = osinfo.Probe(nil)
+	_ port.SessionProbe = logind.Probe(nil)
+	_ port.X11Probe     = x11.Probe(nil)
+	_ port.WaylandProbe = wayland.Probe(nil)
+	_ port.DesktopProbe = desktop.Probe(nil)
+	_ port.GPUProbe     = drm.Probe(nil)
+	_ port.StackProbe   = gl.Probe(nil)
+	_ port.PortalProbe  = portal.Probe(nil)
+	_ port.ProcessProbe = (*procscan.Probe)(nil)
+	_ port.Bus          = (*dbusconn.Bus)(nil)
+)
+
 // Detect reports the complete desktop environment using the default options.
 //
 // The returned *Environment is never nil. The error reports probes that did
 // not succeed and is safe to ignore; see the package documentation.
 func Detect() (*Environment, error) {
-	return DetectContext(context.Background())
+	result, callErr := DetectContext(context.Background())
+
+	if callErr != nil {
+		return result, fmt.Errorf("linuxdesktop: detect environment: %w", callErr)
+	}
+	return result, nil
 }
 
 // DetectContext reports the desktop environment, honoring ctx and opts.
@@ -38,9 +61,15 @@ func DetectContext(ctx context.Context, opts ...Option) (*Environment, error) {
 		ctx = context.Background()
 	}
 
-	cfg := newConfig(opts...)
+	result, err := detectOn(ctx, newConfig(opts...), runtime.GOOS)
+	if err != nil {
+		return result, fmt.Errorf("linuxdesktop: detect context: %w", err)
+	}
+	return result, nil
+}
 
-	if runtime.GOOS != goosLinux {
+func detectOn(ctx context.Context, cfg *core.Config, goos string) (*Environment, error) {
+	if goos != goosLinux {
 		return elsewhere(), ErrNotLinux
 	}
 
@@ -58,49 +87,61 @@ func DetectContext(ctx context.Context, opts ...Option) (*Environment, error) {
 // zero-valued Environment marked headless, so a cross-platform caller can
 // import this package unconditionally and branch on the result.
 func elsewhere() *Environment {
-	return &Environment{
-		Display:  DisplayInfo{Protocol: DisplayProtocolUnknown},
-		Session:  SessionInfo{Type: SessionTypeUnknown},
-		Desktop:  DesktopInfo{Environment: DesktopUnknown},
-		Headless: true,
-	}
+	result := new(Environment)
+
+	result.Display.Protocol = DisplayProtocolUnknown
+	result.Session.Type = SessionTypeUnknown
+	result.Desktop.Environment = DesktopUnknown
+	result.Headless = true
+
+	return result
 }
 
 // OS reports the distribution and kernel identity.
 func OS() (OSInfo, error) {
 	e, err := section(SectionOS)
-
-	return e.OS, err
+	if err != nil {
+		return e.OS, fmt.Errorf("linuxdesktop: detect operating system: %w", err)
+	}
+	return e.OS, nil
 }
 
 // Session reports the logind seat session.
 func Session() (SessionInfo, error) {
 	e, err := section(SectionSession)
-
-	return e.Session, err
+	if err != nil {
+		return e.Session, fmt.Errorf("linuxdesktop: detect session: %w", err)
+	}
+	return e.Session, nil
 }
 
 // Display reports which display servers are reachable, connecting to each one
 // that is.
 func Display() (DisplayInfo, error) {
 	e, err := section(SectionDisplay)
-
-	return e.Display, err
+	if err != nil {
+		return e.Display, fmt.Errorf("linuxdesktop: detect display: %w", err)
+	}
+	return e.Display, nil
 }
 
 // Desktop reports the desktop environment.
 func Desktop() (DesktopInfo, error) {
 	e, err := section(SectionDesktop)
-
-	return e.Desktop, err
+	if err != nil {
+		return e.Desktop, fmt.Errorf("linuxdesktop: detect desktop: %w", err)
+	}
+	return e.Desktop, nil
 }
 
 // Compositor reports the compositor or window manager, together with the
 // method that identified it and how far that method can be trusted.
 func Compositor() (CompositorInfo, error) {
 	e, err := section(SectionCompositor)
-
-	return e.Compositor, err
+	if err != nil {
+		return e.Compositor, fmt.Errorf("linuxdesktop: detect compositor: %w", err)
+	}
+	return e.Compositor, nil
 }
 
 // Graphics reports the GPUs and the client-side graphics stack. It uses the
@@ -108,25 +149,27 @@ func Compositor() (CompositorInfo, error) {
 // with WithOpenGL.
 func Graphics() (GraphicsInfo, error) {
 	e, err := section(SectionGraphics)
-
-	return e.Graphics, err
+	if err != nil {
+		return e.Graphics, fmt.Errorf("linuxdesktop: detect graphics: %w", err)
+	}
+	return e.Graphics, nil
 }
 
 // Portal reports whether xdg-desktop-portal is running and what it offers.
 func Portal() (PortalInfo, error) {
 	e, err := section(SectionPortal)
-
-	return e.Portal, err
+	if err != nil {
+		return e.Portal, fmt.Errorf("linuxdesktop: detect portal: %w", err)
+	}
+	return e.Portal, nil
 }
 
 // IsWayland reports whether a Wayland compositor socket is present. It stats a
 // path and nothing more, so it is safe on any hot path; Display connects and
 // is therefore the authority.
-func IsWayland() bool {
-	if runtime.GOOS != goosLinux {
-		return false
-	}
+func IsWayland() bool { return onLinux(runtime.GOOS, waylandAvailable) }
 
+func waylandAvailable() bool {
 	snapshot := env.New().Snapshot()
 
 	return wayland.SocketPath(&snapshot) != ""
@@ -134,11 +177,9 @@ func IsWayland() bool {
 
 // IsX11 reports whether an X server appears to be reachable. Like IsWayland it
 // only stats; a display on a remote host is assumed reachable.
-func IsX11() bool {
-	if runtime.GOOS != goosLinux {
-		return false
-	}
+func IsX11() bool { return onLinux(runtime.GOOS, x11Available) }
 
+func x11Available() bool {
 	snapshot := env.New().Snapshot()
 
 	return x11.Available(&snapshot)
@@ -172,12 +213,17 @@ func WithProcessScan() Option { return func(c *Config) { c.ProcessScan = true } 
 
 // section runs a detection limited to one part of the Environment.
 func section(s Section) (*Environment, error) {
-	return DetectContext(context.Background(), WithSections(s))
+	result, callErr := DetectContext(context.Background(), WithSections(s))
+
+	if callErr != nil {
+		return result, fmt.Errorf("linuxdesktop: detect section: %w", callErr)
+	}
+	return result, nil
 }
 
 // adapters is the composition root: the one place that decides which
 // implementation satisfies each port.
-func adapters(bus port.Bus, cfg core.Config) core.Deps {
+func adapters(bus port.Bus, cfg *core.Config) core.Deps {
 	deps := core.Deps{
 		Env:     env.New(),
 		OS:      osinfo.New(),
@@ -186,8 +232,9 @@ func adapters(bus port.Bus, cfg core.Config) core.Deps {
 		Wayland: wayland.New(),
 		Desktop: desktop.New(bus),
 		GPUs:    drm.New(),
-		Stack:   gl.New(cfg.NativeGL),
+		Stack:   graphicsProbe(cfg),
 		Portal:  portal.New(bus),
+		Process: nil,
 	}
 	if cfg.ProcessScan {
 		deps.Process = procscan.New(rules.IsCompositorProcess)
@@ -196,19 +243,14 @@ func adapters(bus port.Bus, cfg core.Config) core.Deps {
 	return deps
 }
 
-// Compile-time proof that every adapter still satisfies the port it is wired
-// to. These cost nothing at runtime and catch a broken signature at build time
-// rather than at the injection site.
-var (
-	_ port.EnvProbe     = env.Probe{}
-	_ port.OSProbe      = osinfo.Probe{}
-	_ port.SessionProbe = (*logind.Probe)(nil)
-	_ port.X11Probe     = x11.Probe{}
-	_ port.WaylandProbe = wayland.Probe{}
-	_ port.DesktopProbe = (*desktop.Probe)(nil)
-	_ port.GPUProbe     = drm.Probe{}
-	_ port.StackProbe   = gl.Probe{}
-	_ port.PortalProbe  = (*portal.Probe)(nil)
-	_ port.ProcessProbe = (*procscan.Probe)(nil)
-	_ port.Bus          = (*dbusconn.Bus)(nil)
-)
+func graphicsProbe(cfg *core.Config) gl.Probe {
+	if cfg.NativeGL {
+		return gl.NewNative()
+	}
+
+	return gl.New()
+}
+
+func onLinux(goos string, available func() bool) bool {
+	return goos == goosLinux && available()
+}

@@ -4,8 +4,16 @@ package native
 
 // Shared library sonames.
 const (
-	libEGL    = "libEGL.so.1"
-	libVulkan = "libvulkan.so.1"
+	// Native calls return a null address or EGL_FALSE to indicate failure.
+	nullAddress    uintptr = 0
+	eglFalse       uint32  = 0
+	eglNoConfigs   int32   = 0
+	eglConfigCount int32   = 1
+	eglESVersion   int32   = 2
+	decimalBase            = 10
+	vkNoVariant    uint32  = 0
+	libEGL                 = "libEGL.so.1"
+	libVulkan              = "libvulkan.so.1"
 )
 
 // EGL enumerants.

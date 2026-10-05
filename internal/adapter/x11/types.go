@@ -3,11 +3,15 @@
 
 package x11
 
-import "github.com/jezek/xgb/xproto"
+import (
+	"github.com/gostafa/linuxdesktop/internal/domain"
+	"github.com/gostafa/linuxdesktop/internal/probe"
+	"github.com/jezek/xgb/xproto"
+)
 
 type (
 	// Probe implements port.X11Probe. It is stateless.
-	Probe struct{}
+	Probe = probe.X11Func[domain.Env, *domain.X11Info]
 
 	// atomCookies holds the three InternAtom requests while they are in flight.
 	atomCookies struct {

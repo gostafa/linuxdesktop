@@ -4,20 +4,16 @@
 package wayland
 
 const (
-	// Object ids. wl_display is always 1; the other two are the only ids this
-	// client ever allocates.
-	objDisplay  uint32 = 1
+	// wireOne is the display object ID and its get_registry request opcode.
+	wireOne = 1
+
+	// The registry and callback are the only object IDs this client allocates.
 	objRegistry uint32 = 2
 	objCallback uint32 = 3
 
-	// Request opcodes on wl_display.
-	opDisplaySync        uint32 = 0
-	opDisplayGetRegistry uint32 = 1
-
-	// Event opcodes.
-	evDisplayError   uint32 = 0
-	evRegistryGlobal uint32 = 0
-	evCallbackDone   uint32 = 0
+	// wireZero is the sync request and error/global/done event opcode.
+	// It also marks the absence of an inherited socket.
+	wireZero = 0
 
 	// wordBytes is one 32-bit wire word: the unit every Wayland field is sized
 	// and aligned in.
@@ -26,15 +22,12 @@ const (
 	// headerSize is object id (4 bytes) plus the packed size/opcode word.
 	headerSize = wordBytes + wordBytes
 
-	// requestSize is a header plus one new_id argument.
+	// requestSize is a header plus one new_id argument. It also covers the
+	// three-word prefix before a registry.global or display.error string.
 	requestSize = headerSize + wordBytes
 
 	// handshakeSize covers get_registry and sync written together.
 	handshakeSize = requestSize + requestSize
-
-	// fixedBody is the part of a wl_registry.global or a wl_display.error body
-	// that precedes its string: three 32-bit fields.
-	fixedBody = wordBytes * 3
 
 	// opcodeBits is how far a message size sits above the opcode in the second
 	// header word, and opcodeMask selects the opcode back out of it.
@@ -61,8 +54,12 @@ const (
 	// nul terminates every string on the wire.
 	nul = "\x00"
 
-	// noValue is an unset environment variable or an unreadable string, and
-	// noFD is the absence of an inherited socket.
+	// noValue is an unset environment variable or an unreadable string.
 	noValue = ""
-	noFD    = 0
+)
+
+const (
+	errDispatchEvent = "wayland: dispatch event: %w"
+	errReadEvents    = "wayland: read events: %w"
+	errQueryRegistry = "wayland: query registry: %w"
 )

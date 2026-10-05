@@ -55,3 +55,8 @@ const (
 	// noValue is an unset variable, an unreadable file, or an unnamed backend.
 	noValue = ""
 )
+
+const (
+	errDetectAvailability = "portal: detect availability: %w"
+	errReadInterfaces     = "portal: read interfaces: %w"
+)

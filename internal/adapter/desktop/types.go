@@ -3,10 +3,13 @@
 
 package desktop
 
-import "github.com/gostafa/linuxdesktop/internal/port"
+import (
+	"github.com/gostafa/linuxdesktop/internal/domain"
+	"github.com/gostafa/linuxdesktop/internal/probe"
+)
 
-// Probe implements port.DesktopProbe. bus may be nil, which simply leaves the
-// GNOME version unset.
-type Probe struct {
-	bus port.Bus
-}
+type (
+	// Probe implements port.DesktopProbe. bus may be nil, which simply leaves the
+	// GNOME version unset.
+	Probe = probe.DesktopFunc[domain.Env, domain.DesktopInfo]
+)

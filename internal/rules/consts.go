@@ -25,3 +25,32 @@ const (
 	// desktop: $XDG_SESSION_DESKTOP and $DESKTOP_SESSION.
 	extraTokens = 2
 )
+
+const (
+	nameGnomeshell   = "gnomeshell"
+	nameHyprland     = "Hyprland"
+	nameSway         = "sway"
+	nameWayfire      = "wayfire"
+	nameI3           = "i3"
+	nameKWin         = "KWin"
+	nameMutter       = "Mutter"
+	nameWeston       = "weston"
+	nameRiver        = "river"
+	tokenMutter      = "mutter"
+	tokenKwin        = "kwin"
+	tokenXfwm4       = "xfwm4"
+	nameXfwm4        = "Xfwm4"
+	tokenMarco       = "marco"
+	nameMarco        = "Marco"
+	tokenOpenbox     = "openbox"
+	nameOpenbox      = "Openbox"
+	nameAwesome      = "awesome"
+	nameLabwc        = "labwc"
+	nameBspwm        = "bspwm"
+	nameDwm          = "dwm"
+	nameQtile        = "qtile"
+	nameXmonad       = "xmonad"
+	nameHerbstluftwm = "herbstluftwm"
+	nameSpectrwm     = "spectrwm"
+	nameNiri         = "niri"
+)

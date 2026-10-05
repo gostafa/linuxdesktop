@@ -6,6 +6,7 @@ package logind
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,28 +18,33 @@ import (
 )
 
 // New returns a session probe. bus may be nil to disable the D-Bus fallback.
-func New(bus port.Bus) *Probe { return &Probe{bus: bus} }
+func New(bus port.Bus) Probe { return sessionAt("", bus) }
 
 // Session reads the seat session, preferring the filesystem mirror and only
 // falling back to D-Bus when it is unreadable.
-func (probe *Probe) Session(ctx context.Context, env *domain.Env) (domain.SessionInfo, error) {
-	info := domain.SessionInfo{Type: domain.SessionTypeUnknown}
-	found := probe.locate(ctx, &info, env)
+func sessionAt(files string, bus port.Bus) Probe {
+	return func(ctx context.Context, env *domain.Env) (domain.SessionInfo, error) {
+		info := domain.SessionInfo{Type: domain.SessionTypeUnknown}
+		found := fromMirror(files, &info, sessionID(files, env)) || locate(ctx, &info, bus)
 
-	applyEnv(&info, env)
+		applyEnv(&info, env)
 
-	if found || known(&info) {
-		return info, nil
+		if found || known(&info) {
+			return info, nil
+		}
+
+		return info, ErrNoSession
 	}
-
-	return info, ErrNoSession
 }
 
 // applyBus fills info from logind's own session object in one round trip.
-func (probe *Probe) applyBus(ctx context.Context, info *domain.SessionInfo) error {
-	props, err := probe.bus.Properties(ctx, port.SystemBus, busName, sessionPath, sessionIface)
+func applyBus(ctx context.Context, info *domain.SessionInfo, bus port.Bus) error {
+	props, err := bus.Properties(ctx, port.SystemBus, &port.PropertyQuery{
+		Object:    port.Object{Destination: busName, Path: sessionPath},
+		Interface: sessionIface,
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("logind: read session properties: %w", err)
 	}
 
 	readStrings(info, props)
@@ -49,22 +55,17 @@ func (probe *Probe) applyBus(ctx context.Context, info *domain.SessionInfo) erro
 	return nil
 }
 
-// locate fills info from the filesystem mirror, falling back to logind's own
-// session object when there is none to read.
-func (probe *Probe) locate(
+// locate fills info from logind's session object when the mirror was unavailable.
+func locate(
 	ctx context.Context,
 	info *domain.SessionInfo,
-	env *domain.Env,
+	bus port.Bus,
 ) bool {
-	if fromMirror(info, sessionID(env)) {
-		return true
-	}
-
-	if probe.bus == nil {
+	if bus == nil {
 		return false
 	}
 
-	return probe.applyBus(ctx, info) == nil
+	return applyBus(ctx, info, bus) == nil
 }
 
 // known reports whether anything at all was learned about the session.
@@ -74,27 +75,27 @@ func known(info *domain.SessionInfo) bool {
 
 // sessionID resolves this process's session id: from the environment when it
 // says, from the cgroup when it does not, and by scanning as a last resort.
-func sessionID(env *domain.Env) string {
+func sessionID(files string, env *domain.Env) string {
 	if env.SessionID != noValue {
 		return env.SessionID
 	}
 
-	id := idFromCgroup()
+	id := idFromCgroup(files)
 	if id != noValue {
 		return id
 	}
 
-	return idFromScan(os.Getuid())
+	return idFromScan(files, os.Getuid())
 }
 
 // fromMirror fills info from a /run/systemd/sessions/<id> mirror, reporting
 // whether there was one to read.
-func fromMirror(info *domain.SessionInfo, id string) bool {
+func fromMirror(files string, info *domain.SessionInfo, id string) bool {
 	if id == noValue {
 		return false
 	}
 
-	data, err := sysfs.Bytes(filepath.Join(dirSessions, id))
+	data, err := sysfs.Bytes(sysfs.Path(files, filepath.Join(dirSessions, id)))
 	if err != nil {
 		return false
 	}
@@ -255,8 +256,8 @@ func markRemote(info *domain.SessionInfo, env *domain.Env) {
 
 // idFromCgroup extracts the id from a session-<id>.scope cgroup path, which is
 // how libsystemd resolves a pid to a session without talking to logind.
-func idFromCgroup() string {
-	data, err := sysfs.Bytes(pathCgroup)
+func idFromCgroup(files string) string {
+	data, err := sysfs.Bytes(sysfs.Path(files, pathCgroup))
 	if err != nil {
 		return noValue
 	}
@@ -283,22 +284,22 @@ func between(data []byte, prefix, suffix string) string {
 }
 
 // idFromScan looks for a session owned by uid, preferring an active one.
-func idFromScan(uid int) string {
-	names, err := sysfs.DirNames(dirSessions)
+func idFromScan(files string, uid int) string {
+	names, err := sysfs.DirNames(sysfs.Path(files, dirSessions))
 	if err != nil {
 		return noValue
 	}
 
-	return pickSession(names, strconv.Itoa(uid))
+	return pickSession(files, names, strconv.Itoa(uid))
 }
 
 // pickSession is the first active session owned by uid, or failing that the
 // first session owned by uid at all.
-func pickSession(names []string, uid string) string {
+func pickSession(files string, names []string, uid string) string {
 	fallback := noValue
 
 	for i := range names {
-		state, ok := sessionState(names[i], uid)
+		state, ok := sessionState(files, names[i], uid)
 		if !ok {
 			continue
 		}
@@ -315,12 +316,12 @@ func pickSession(names []string, uid string) string {
 
 // sessionState reads the STATE of one session mirror, reporting false when the
 // entry is not a mirror or does not belong to uid.
-func sessionState(name, uid string) (string, bool) {
+func sessionState(files, name, uid string) (string, bool) {
 	if strings.ContainsRune(name, '.') {
 		return noValue, false // .ref FIFOs, not session mirrors
 	}
 
-	data, err := sysfs.Bytes(filepath.Join(dirSessions, name))
+	data, err := sysfs.Bytes(sysfs.Path(files, filepath.Join(dirSessions, name)))
 	if err != nil || sysfs.Field(data, keyUID) != uid {
 		return noValue, false
 	}

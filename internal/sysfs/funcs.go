@@ -6,25 +6,26 @@ package sysfs
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 )
 
+// Path resolves a system path under root. An empty root reads the current system.
+func Path(root, path string) string { return filepath.Join(root, path) }
+
 // String reads a small file and returns its contents with surrounding
-// whitespace removed. It allocates once, for the returned string.
+// whitespace removed. Its scratch buffer belongs to this read.
 func String(path string) (string, error) {
 	buf := take()
 
 	read, err := readInto(path, buf)
 	if err != nil {
-		scratch.Put(buf)
-
-		return noValue, err
+		return noValue, fmt.Errorf("sysfs: read string: %w", err)
 	}
 
 	out := string(bytes.TrimSpace((*buf)[:read]))
-	scratch.Put(buf)
 
 	return out, nil
 }
@@ -33,7 +34,10 @@ func String(path string) (string, error) {
 // which is what every caller in this library wants: an absent sysfs attribute
 // is missing information, not a failure.
 func Trimmed(path string) string {
-	out, _ := String(path)
+	out, err := String(path)
+	if err != nil {
+		return noValue
+	}
 
 	return out
 }
@@ -44,14 +48,11 @@ func Bytes(path string) ([]byte, error) {
 
 	read, err := readInto(path, buf)
 	if err != nil {
-		scratch.Put(buf)
-
-		return nil, err
+		return nil, fmt.Errorf("sysfs: read bytes: %w", err)
 	}
 
 	out := make([]byte, read)
 	copy(out, (*buf)[:read])
-	scratch.Put(buf)
 
 	return out, nil
 }
@@ -69,7 +70,7 @@ func IsSocket(path string) bool {
 func DirNames(path string) ([]string, error) {
 	dir, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sysfs: open directory: %w", err)
 	}
 
 	names, err := dir.Readdirnames(-1)
@@ -98,17 +99,17 @@ func LinkBase(path string) string {
 	return filepath.Base(target)
 }
 
-// Each walks a KEY=VALUE file, calling fn for every pair. Returning false from
-// fn stops the walk. Blank lines and # comments are skipped, and matching
+// Each walks a KEY=VALUE file, calling visit for every pair. Returning false from
+// visit stops the walk. Blank lines and # comments are skipped, and matching
 // surrounding quotes are stripped from values.
-func Each(data []byte, fn func(key, value string) bool) {
+func Each(data []byte, visit func(key, value string) bool) {
 	for line := range bytes.Lines(data) {
 		key, value, ok := pair(line)
 		if !ok {
 			continue
 		}
 
-		if !fn(key, value) {
+		if !visit(key, value) {
 			return
 		}
 	}
@@ -127,16 +128,11 @@ func Field(data []byte, key string) string {
 	return noValue
 }
 
-// take borrows a scratch buffer, falling back to a fresh one on the impossible
-// day the pool hands back something else.
+// take creates the buffer owned by one read.
 func take() *[]byte {
-	if buf, ok := scratch.Get().(*[]byte); ok {
-		return buf
-	}
-
-	fresh := make([]byte, scratchSize)
-
-	return &fresh
+	var buffer [scratchSize]byte
+	data := buffer[:]
+	return &data
 }
 
 // readInto fills *buf with the contents of path and reports how many bytes it
@@ -144,7 +140,7 @@ func take() *[]byte {
 func readInto(path string, buf *[]byte) (int, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return zero, err
+		return zero, fmt.Errorf("sysfs: open file: %w", err)
 	}
 
 	read, err := drain(file, buf)
@@ -167,7 +163,11 @@ func drain(file io.Reader, buf *[]byte) (int, error) {
 		read += got
 
 		if err != nil {
-			return read, sansEOF(err)
+			callErr := readError(err)
+			if callErr != nil {
+				return read, fmt.Errorf("sysfs: drain file: %w", callErr)
+			}
+			return read, nil
 		}
 
 		if got == zero {
@@ -180,20 +180,18 @@ func drain(file io.Reader, buf *[]byte) (int, error) {
 // when it is full. Reaching maxFileSize ends the read rather than growing past
 // it, so a hostile path cannot allocate without bound.
 func step(file io.Reader, buf *[]byte, read int) (int, error) {
-	if read < len(*buf) {
-		return file.Read((*buf)[read:])
-	}
-
-	if read >= maxFileSize {
+	if read >= len(*buf) && read >= maxFileSize {
 		return zero, io.EOF
 	}
 
-	grown := make([]byte, len(*buf)*bufferGrowth)
-	copy(grown, *buf)
+	growBuffer(buf, read)
 
-	*buf = grown
+	result, callErr := file.Read((*buf)[read:])
+	if callErr != nil {
+		return result, fmt.Errorf(errReadChunk, callErr)
+	}
 
-	return file.Read((*buf)[read:])
+	return result, nil
 }
 
 // sansEOF turns the io.EOF that ends every complete read into success.
@@ -238,4 +236,24 @@ func unquote(raw []byte) string {
 // quote reports whether char is one of the two quoting bytes.
 func quote(char byte) bool {
 	return char == '"' || char == '\''
+}
+
+func growBuffer(buf *[]byte, read int) {
+	if read < len(*buf) {
+		return
+	}
+
+	grown := make([]byte, len(*buf)*bufferGrowth)
+	copy(grown, *buf)
+
+	*buf = grown
+}
+
+func readError(err error) error {
+	err = sansEOF(err)
+	if err != nil {
+		return fmt.Errorf("sysfs: read file contents: %w", err)
+	}
+
+	return nil
 }

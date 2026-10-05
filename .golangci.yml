@@ -678,7 +678,7 @@ linters:
       disable: []
   exclusions:
     paths:
-      - .*_test.go
+      - ".*_test.go"
     generated: disable
     warn-unused: true
 

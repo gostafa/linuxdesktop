@@ -6,51 +6,86 @@ package core
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/gostafa/linuxdesktop/internal/domain"
 	"github.com/gostafa/linuxdesktop/internal/port"
+	"github.com/gostafa/linuxdesktop/internal/probe"
+	"github.com/gostafa/linuxdesktop/internal/schema"
 )
 
 type (
-	// Config controls a detection run.
-	Config struct {
-		// Timeout bounds the whole run. Zero means no overall bound.
-		Timeout time.Duration
-		// ProbeTimeout bounds each individual probe, so one wedged server
-		// cannot consume the entire budget. Zero means each probe may use all
-		// of it.
-		ProbeTimeout time.Duration
-		// Sections selects which parts of the Environment to populate.
-		Sections domain.Section
-		// NativeGL enables the dlopen path in the graphics stack probe.
-		NativeGL bool
-		// ProcessScan enables the /proc fallback for compositor detection.
-		ProcessScan bool
+	// resultTarget binds a result's destination to its diagnostic label.
+	resultTarget[T any] struct {
+		value func(*collector) *T
+		name  string
 	}
+	// pairedTarget binds both destinations for a probe with two results.
+	pairedTarget[A, B any] struct {
+		first  func(*collector) *A
+		second func(*collector) *B
+		name   string
+	}
+	// publication pairs the probe label with the synchronized update.
+	publication struct {
+		store func()
+		name  string
+	}
+
+	// Config controls a detection run.
+	Config = schema.Config[domain.Section]
 
 	// Option mutates a Config.
 	Option func(*Config)
 
 	// Deps are the adapters an Engine runs. Every field may be nil, in which
 	// case the corresponding data is simply left unset.
-	Deps struct {
-		Env     port.EnvProbe
-		OS      port.OSProbe
-		Session port.SessionProbe
-		X11     port.X11Probe
-		Wayland port.WaylandProbe
-		Desktop port.DesktopProbe
-		GPUs    port.GPUProbe
-		Stack   port.StackProbe
-		Portal  port.PortalProbe
-		Process port.ProcessProbe
+	Deps = dependencySet[
+		port.EnvProbe,
+		port.OSProbe,
+		port.SessionProbe,
+		port.X11Probe,
+		port.WaylandProbe,
+		port.DesktopProbe,
+		port.GPUProbe,
+		port.StackProbe,
+		port.PortalProbe,
+		port.ProcessProbe,
+	]
+
+	// dependencySet groups independently supplied probe implementations.
+	dependencySet[E, O, S, X, W, D, G, L, P, F any] struct {
+		// Env synchronous environment snapshot provider.
+		Env E
+		// OS distribution and kernel identity probe.
+		OS O
+		// Session logind seat session probe.
+		Session S
+		// X11 x server connection and metadata probe.
+		X11 X
+		// Wayland wayland connection and registry probe.
+		Wayland W
+		// Desktop desktop environment and version probe.
+		Desktop D
+		// GPUs dRM hardware enumeration probe.
+		GPUs G
+		// Stack probe for the client-side OpenGL and Vulkan implementations.
+		Stack L
+		// Portal desktop portal introspection probe.
+		Portal P
+		// Process optional fallback probe for compositor processes.
+		Process F
 	}
 
 	// Engine runs a configured set of probes.
-	Engine struct {
-		deps Deps
-		cfg  Config
+	Engine = probe.DetectFunc[*domain.Environment]
+
+	// detector holds the immutable dependencies and configuration captured by Engine.
+	detector = executionState[Deps, Config]
+
+	// executionState binds dependencies to configuration without selecting concrete implementations.
+	executionState[D, C any] struct {
+		deps D
+		cfg  C
 	}
 
 	// probeFunc is one adapter call, already bound to the engine that owns it.
@@ -58,19 +93,25 @@ type (
 
 	// step is one probe the engine may run: the work it does, the sections it
 	// contributes to, and whether its adapter was wired in at all.
-	step struct {
-		run     probeFunc
-		section domain.Section
+	step = probeStep[probeFunc, domain.Section]
+
+	// probeStep associates work with its selection mask and availability.
+	probeStep[R, S any] struct {
+		run     R
+		section S
 		wired   bool
 	}
 
 	// collector gathers what the probes find. Each one runs on its own
 	// goroutine, so every field here is written while holding lock.
-	collector struct {
-		out     *domain.Environment
-		sig     *domain.Signals
-		x11     *domain.X11Info
-		wayland *domain.WaylandInfo
+	collector = collection[domain.Environment, domain.Signals, domain.X11Info, domain.WaylandInfo]
+
+	// collection synchronizes results and evidence produced by concurrent probes.
+	collection[O, S, X, W any] struct {
+		out     *O
+		sig     *S
+		x11     *X
+		wayland *W
 		failed  []error
 		wait    sync.WaitGroup
 		lock    sync.Mutex

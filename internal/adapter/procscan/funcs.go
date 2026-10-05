@@ -5,6 +5,7 @@ package procscan
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,37 +21,44 @@ func New(filter func(string) bool) *Probe {
 		filter = func(string) bool { return true }
 	}
 
-	return &Probe{filter: filter}
+	return &Probe{filter: filter, root: procDir}
 }
 
 // Processes returns the command names of this user's processes that pass the
 // filter.
 func (probe *Probe) Processes(ctx context.Context) ([]string, error) {
-	entries, err := sysfs.DirNames(procDir)
+	entries, err := sysfs.DirNames(probe.root)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(errListProcesses, err)
 	}
 
-	return newScanner(probe.filter).walk(ctx, entries)
+	result, callErr := walk(ctx, newScanner(probe.filter, probe.root), entries)
+	if callErr != nil {
+		return result, fmt.Errorf(errListProcesses, callErr)
+	}
+
+	return result, nil
 }
 
-func newScanner(filter func(string) bool) *scanner {
+func newScanner(filter func(string) bool, root string) *scanner {
 	return &scanner{
-		filter: filter,
-		seen:   make(map[string]bool, maxMatches),
-		uid:    strconv.Itoa(os.Getuid()),
+		filter:  filter,
+		root:    root,
+		seen:    make(map[string]bool, maxMatches),
+		uid:     strconv.Itoa(os.Getuid()),
+		matches: nil,
 	}
 }
 
 // accepts reports whether a command name is a new one the filter wants.
-func (scan *scanner) accepts(name string) bool {
+func accepts(scan *scanner, name string) bool {
 	return name != noValue && !scan.seen[name] && scan.filter(name)
 }
 
 // consider records one /proc entry if it names a process worth keeping, and
 // reports whether the result is now full.
-func (scan *scanner) consider(entry string) bool {
-	name, ok := scan.wanted(entry)
+func consider(scan *scanner, entry string) bool {
+	name, ok := wanted(scan, entry)
 	if !ok {
 		return false
 	}
@@ -63,13 +71,14 @@ func (scan *scanner) consider(entry string) bool {
 
 // walk visits every process directory, stopping when the result is full or the
 // caller gives up.
-func (scan *scanner) walk(ctx context.Context, entries []string) ([]string, error) {
+func walk(ctx context.Context, scan *scanner, entries []string) ([]string, error) {
 	for i := range entries {
-		if ctx.Err() != nil {
-			return scan.matches, ctx.Err()
+		err := ctx.Err()
+		if err != nil {
+			return scan.matches, fmt.Errorf("procscan: scan processes: %w", err)
 		}
 
-		if scan.consider(entries[i]) {
+		if consider(scan, entries[i]) {
 			break
 		}
 	}
@@ -80,22 +89,22 @@ func (scan *scanner) walk(ctx context.Context, entries []string) ([]string, erro
 // wanted reads a process's command name and reports whether it is a new one
 // belonging to this user that the filter accepts. Ownership is confirmed last,
 // since it costs a second file read.
-func (scan *scanner) wanted(entry string) (string, bool) {
+func wanted(scan *scanner, entry string) (string, bool) {
 	if !isPID(entry) {
 		return noValue, false
 	}
 
-	name := commName(entry)
-	if !scan.accepts(name) {
+	name := scan.commName(entry)
+	if !accepts(scan, name) {
 		return noValue, false
 	}
 
-	return name, ownedBy(entry, scan.uid)
+	return name, scan.ownedBy(entry, scan.uid)
 }
 
 // commName reads a process's command name, or "" when it has gone away.
-func commName(entry string) string {
-	name, err := sysfs.String(filepath.Join(procDir, entry, commFile))
+func (scan *scanner) commName(entry string) string {
+	name, err := sysfs.String(filepath.Join(scan.root, entry, commFile))
 	if err != nil {
 		return noValue
 	}
@@ -121,8 +130,8 @@ func isPID(name string) bool {
 
 // ownedBy confirms a process belongs to uid by reading the Uid: line of its
 // status file, whose first field is the real uid.
-func ownedBy(pid, uid string) bool {
-	data, err := sysfs.Bytes(filepath.Join(procDir, pid, statusFile))
+func (scan *scanner) ownedBy(pid, uid string) bool {
+	data, err := sysfs.Bytes(filepath.Join(scan.root, pid, statusFile))
 	if err != nil {
 		return false
 	}

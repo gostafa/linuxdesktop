@@ -3,7 +3,9 @@
 
 package logind
 
-import "errors"
+import (
+	"errors"
+)
 
 // ErrNoSession is reported when neither logind nor the environment knows of a
 // session. That is normal inside a container or a bare service unit, so the

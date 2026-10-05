@@ -27,3 +27,12 @@ const (
 	// noValue is an unreadable attribute or a field os-release did not carry.
 	noValue = ""
 )
+
+const (
+	archMips    = "mips"
+	archMips64  = "mips64"
+	archPpc64   = "ppc64"
+	archPpc64le = "ppc64le"
+	archRiscv64 = "riscv64"
+	archS390x   = "s390x"
+)
