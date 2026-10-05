@@ -81,6 +81,7 @@ func Headless(waylandAvailable, x11Available bool) bool {
 // uninteresting processes before paying to verify ownership of the rest.
 func IsCompositorProcess(name string) bool {
 	found, ok := processNames(name)
+
 	return ok && found.name != noValue
 }
 

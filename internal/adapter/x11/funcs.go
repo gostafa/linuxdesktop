@@ -42,6 +42,7 @@ func x11(ctx context.Context, env *domain.Env) (*domain.X11Info, error) {
 	if err != nil {
 		return result, fmt.Errorf("x11: query display: %w", err)
 	}
+
 	return result, nil
 }
 

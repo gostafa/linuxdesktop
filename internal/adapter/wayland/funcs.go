@@ -117,12 +117,14 @@ func dispatchControl(object, opcode uint32, body []byte) error {
 		if err != nil {
 			return fmt.Errorf("wayland: callback event: %w", err)
 		}
+
 		return nil
 	case wireOne:
 		err := failure(opcode, body)
 		if err != nil {
 			return fmt.Errorf("wayland: display event: %w", err)
 		}
+
 		return nil
 	default:
 		return nil
@@ -237,6 +239,7 @@ func read(reg *registry, reader io.Reader) error {
 	if callErr != nil {
 		return fmt.Errorf("wayland: read progress: %w", callErr)
 	}
+
 	return nil
 }
 
@@ -344,6 +347,7 @@ func readGlobals(reader io.Reader) ([]domain.WaylandGlobal, error) {
 			if callErr != nil {
 				return reg.globals, fmt.Errorf("wayland: read registry: %w", callErr)
 			}
+
 			return reg.globals, nil
 		}
 	}

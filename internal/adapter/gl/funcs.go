@@ -45,6 +45,7 @@ func nativeStack(files string, ctx context.Context) (domain.OpenGLInfo, domain.V
 	if err != nil {
 		return opengl, vulkan, fmt.Errorf("gl: query native stack: %w", err)
 	}
+
 	return opengl, vulkan, nil
 }
 

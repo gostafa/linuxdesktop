@@ -131,7 +131,9 @@ func Field(data []byte, key string) string {
 // take creates the buffer owned by one read.
 func take() *[]byte {
 	var buffer [scratchSize]byte
+
 	data := buffer[:]
+
 	return &data
 }
 
@@ -167,6 +169,7 @@ func drain(file io.Reader, buf *[]byte) (int, error) {
 			if callErr != nil {
 				return read, fmt.Errorf("sysfs: drain file: %w", callErr)
 			}
+
 			return read, nil
 		}
 

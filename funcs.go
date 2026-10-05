@@ -48,10 +48,10 @@ var (
 // not succeed and is safe to ignore; see the package documentation.
 func Detect() (*Environment, error) {
 	result, callErr := DetectContext(context.Background())
-
 	if callErr != nil {
 		return result, fmt.Errorf("linuxdesktop: detect environment: %w", callErr)
 	}
+
 	return result, nil
 }
 
@@ -65,6 +65,7 @@ func DetectContext(ctx context.Context, opts ...Option) (*Environment, error) {
 	if err != nil {
 		return result, fmt.Errorf("linuxdesktop: detect context: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -103,6 +104,7 @@ func OS() (OSInfo, error) {
 	if err != nil {
 		return e.OS, fmt.Errorf("linuxdesktop: detect operating system: %w", err)
 	}
+
 	return e.OS, nil
 }
 
@@ -112,6 +114,7 @@ func Session() (SessionInfo, error) {
 	if err != nil {
 		return e.Session, fmt.Errorf("linuxdesktop: detect session: %w", err)
 	}
+
 	return e.Session, nil
 }
 
@@ -122,6 +125,7 @@ func Display() (DisplayInfo, error) {
 	if err != nil {
 		return e.Display, fmt.Errorf("linuxdesktop: detect display: %w", err)
 	}
+
 	return e.Display, nil
 }
 
@@ -131,6 +135,7 @@ func Desktop() (DesktopInfo, error) {
 	if err != nil {
 		return e.Desktop, fmt.Errorf("linuxdesktop: detect desktop: %w", err)
 	}
+
 	return e.Desktop, nil
 }
 
@@ -141,6 +146,7 @@ func Compositor() (CompositorInfo, error) {
 	if err != nil {
 		return e.Compositor, fmt.Errorf("linuxdesktop: detect compositor: %w", err)
 	}
+
 	return e.Compositor, nil
 }
 
@@ -152,6 +158,7 @@ func Graphics() (GraphicsInfo, error) {
 	if err != nil {
 		return e.Graphics, fmt.Errorf("linuxdesktop: detect graphics: %w", err)
 	}
+
 	return e.Graphics, nil
 }
 
@@ -161,6 +168,7 @@ func Portal() (PortalInfo, error) {
 	if err != nil {
 		return e.Portal, fmt.Errorf("linuxdesktop: detect portal: %w", err)
 	}
+
 	return e.Portal, nil
 }
 
@@ -214,10 +222,10 @@ func WithProcessScan() Option { return func(c *Config) { c.ProcessScan = true } 
 // section runs a detection limited to one part of the Environment.
 func section(s Section) (*Environment, error) {
 	result, callErr := DetectContext(context.Background(), WithSections(s))
-
 	if callErr != nil {
 		return result, fmt.Errorf("linuxdesktop: detect section: %w", callErr)
 	}
+
 	return result, nil
 }
 

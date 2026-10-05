@@ -119,6 +119,7 @@ func run(scan *pciScan, file io.Reader) error {
 // posted, which is the only card that carries a boot_vga marker.
 func collect(files string, entries []string) (gpus []domain.GPUInfo, primary string) {
 	nodes := renderNodesByAddress(files, entries)
+
 	gpus = slices.Grow([]domain.GPUInfo(nil), expectedGPUs)
 	primary = noValue
 

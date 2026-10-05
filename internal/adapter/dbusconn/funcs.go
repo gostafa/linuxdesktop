@@ -119,6 +119,7 @@ func variantValues(raw map[string]dbus.Variant) map[string]any {
 	out := make(map[string]any, len(raw))
 	for kind := range raw {
 		variant := raw[kind]
+
 		out[kind] = variant.Value()
 	}
 
@@ -165,6 +166,7 @@ func openConnection(base context.Context, kind port.BusKind) (*dbus.Conn, error)
 		if err != nil {
 			return conn, fmt.Errorf("dbusconn: connect system bus: %w", err)
 		}
+
 		return conn, nil
 	}
 
@@ -172,6 +174,7 @@ func openConnection(base context.Context, kind port.BusKind) (*dbus.Conn, error)
 	if err != nil {
 		return conn, fmt.Errorf("dbusconn: connect session bus: %w", err)
 	}
+
 	return conn, nil
 }
 
@@ -181,5 +184,6 @@ func (bus *connectionBus[K, C]) Close() error {
 	if err != nil {
 		return fmt.Errorf("dbusconn: close connections: %w", err)
 	}
+
 	return nil
 }
