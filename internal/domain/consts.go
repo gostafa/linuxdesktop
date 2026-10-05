@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package domain
 
 // Session types, mirroring logind's TYPE= and $XDG_SESSION_TYPE.
@@ -16,7 +19,7 @@ const (
 	DisplayProtocolX11     DisplayProtocol = "x11"
 )
 
-// Recognised desktop environments.
+// Recognized desktop environments.
 const (
 	DesktopUnknown  DesktopEnvironment = "unknown"
 	DesktopGNOME    DesktopEnvironment = "gnome"
@@ -31,7 +34,7 @@ const (
 	DesktopPantheon DesktopEnvironment = "pantheon"
 )
 
-// Recognised compositors and window managers. A compositor outside this set is
+// Recognized compositors and window managers. A compositor outside this set is
 // reported as CompositorUnknown with its raw name preserved in
 // CompositorInfo.Name, so no information is lost.
 const (

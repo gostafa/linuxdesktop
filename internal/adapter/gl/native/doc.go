@@ -1,7 +1,7 @@
 // Package native asks the graphics drivers themselves what they are.
 //
 // It dlopens libEGL and libvulkan through purego, so there is no cgo and
-// cross-compilation still works. EGL is initialised for the vendor and version
+// cross-compilation still works. EGL is initialized for the vendor and version
 // strings, then a surfaceless context is created so glGetString can name the
 // real renderer, preferring desktop OpenGL and falling back to OpenGL ES.
 //

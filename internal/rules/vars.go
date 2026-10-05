@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package rules
 
 import "github.com/gostafa/linuxdesktop/internal/domain"
@@ -45,9 +48,15 @@ var envFingerprints = []struct {
 	value func(*domain.Env) string
 	match
 }{
-	{func(e *domain.Env) string { return e.HyprlandSignature }, match{domain.CompositorHyprland, "Hyprland"}},
+	{
+		func(e *domain.Env) string { return e.HyprlandSignature },
+		match{domain.CompositorHyprland, "Hyprland"},
+	},
 	{func(e *domain.Env) string { return e.SwaySock }, match{domain.CompositorSway, "sway"}},
-	{func(e *domain.Env) string { return e.WayfireSocket }, match{domain.CompositorWayfire, "wayfire"}},
+	{
+		func(e *domain.Env) string { return e.WayfireSocket },
+		match{domain.CompositorWayfire, "wayfire"},
+	},
 	{func(e *domain.Env) string { return e.I3Sock }, match{domain.CompositorI3, "i3"}},
 }
 

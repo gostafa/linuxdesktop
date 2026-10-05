@@ -14,7 +14,7 @@
 //
 // The native mode, enabled by the caller, dlopens libEGL and libvulkan through
 // purego — no cgo, so cross-compilation still works — and asks the drivers
-// themselves. It initialises EGL for the vendor and version strings, then
+// themselves. It initializes EGL for the vendor and version strings, then
 // creates a surfaceless context so glGetString can name the real renderer,
 // preferring desktop OpenGL and falling back to OpenGL ES. This is accurate
 // and it is slow: eglInitialize can spin up the GPU driver stack and take tens

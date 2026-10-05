@@ -11,6 +11,6 @@
 // which is not optional on a real desktop.
 //
 // xgb's Reply() has no deadline of its own, so the probe runs a watchdog that
-// closes the connection when the context is cancelled. That turns a wedged X
+// closes the connection when the context is canceled. That turns a wedged X
 // server into a prompt read error instead of a hung detection run.
 package x11

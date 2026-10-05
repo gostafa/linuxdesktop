@@ -1,15 +1,16 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package x11
 
 import (
-	"bytes"
 	"context"
 	"strings"
 
-	"github.com/jezek/xgb"
-	"github.com/jezek/xgb/xproto"
-
 	"github.com/gostafa/linuxdesktop/internal/domain"
 	"github.com/gostafa/linuxdesktop/internal/sysfs"
+	"github.com/jezek/xgb"
+	"github.com/jezek/xgb/xproto"
 )
 
 // New returns an X11 probe.
@@ -20,32 +21,23 @@ func New() Probe { return Probe{} }
 // since confirming it would mean connecting. Callers that need certainty
 // should run the probe, which connects.
 func Available(env *domain.Env) bool {
-	display := env.Display
-	if display == "" {
+	host, number, ok := splitDisplay(env.Display)
+	if !ok {
 		return false
 	}
-	colon := strings.IndexByte(display, ':')
-	if colon < 0 {
-		return false
-	}
-	if host := display[:colon]; host != "" && host != localHost {
+
+	if remote(host) {
 		return true
 	}
-	number := display[colon+1:]
-	if dot := strings.IndexByte(number, '.'); dot >= 0 {
-		number = number[:dot]
-	}
-	if number == "" {
-		return false
-	}
-	return sysfs.IsSocket(unixSocketDir + "/X" + number)
+
+	return number != noValue && sysfs.IsSocket(unixSocketDir+socketPrefix+number)
 }
 
 // X11 connects to $DISPLAY and reports what the server says about itself. A
 // nil result with a nil error means there was no X server to talk to, which on
 // a pure Wayland or headless session is the expected outcome.
 func (Probe) X11(ctx context.Context, env *domain.Env) (*domain.X11Info, error) {
-	if env.Display == "" {
+	if env.Display == noValue {
 		return nil, nil
 	}
 
@@ -59,95 +51,215 @@ func (Probe) X11(ctx context.Context, env *domain.Env) (*domain.X11Info, error) 
 	// the connection out from under it.
 	stop := make(chan struct{})
 	defer close(stop)
-	go func() {
-		select {
-		case <-ctx.Done():
-			conn.Close()
-		case <-stop:
-		}
-	}()
 
+	go watch(ctx, conn, stop)
+
+	return describe(conn, env.Display), nil
+}
+
+// resolve reads the three atoms back off the wire. Any the server does not know
+// comes back zero, which the property lookup treats as absent.
+func (cookies atomCookies) resolve() atomSet {
+	return atomSet{
+		check: atomOf(cookies.check),
+		name:  atomOf(cookies.name),
+		utf8:  atomOf(cookies.utf8),
+	}
+}
+
+// property names _NET_WM_NAME as a UTF8_STRING, or nothing at all when the
+// server knows neither atom.
+func (set atomSet) property() property {
+	if set.name == zero || set.utf8 == zero {
+		return property{}
+	}
+
+	return property{set.name, set.utf8}
+}
+
+// splitDisplay takes $DISPLAY apart into its host and its display number, with
+// the optional screen suffix dropped.
+func splitDisplay(display string) (host, number string, ok bool) {
+	before, after, cut := strings.Cut(display, displaySeparator)
+	if !cut {
+		return noValue, noValue, false
+	}
+
+	return before, beforeScreen(after), true
+}
+
+// beforeScreen drops the optional screen suffix, so "0.1" and "0" both yield
+// "0".
+func beforeScreen(number string) string {
+	for i := range len(number) {
+		if number[i] == screenByte {
+			return number[:i]
+		}
+	}
+
+	return number
+}
+
+// remote reports whether $DISPLAY names a host other than this one. Such a
+// display is assumed reachable, since confirming it would mean connecting.
+func remote(host string) bool {
+	return host != noValue && host != localHost
+}
+
+// watch closes the connection when the caller gives up, which is the only way
+// to interrupt a blocked xgb reply.
+func watch(ctx context.Context, conn *xgb.Conn, stop <-chan struct{}) {
+	select {
+	case <-ctx.Done():
+		conn.Close()
+	case <-stop:
+	}
+}
+
+// describe asks the server everything this library wants to know, sending every
+// independent request before any reply is read so the whole exchange costs one
+// round trip.
+func describe(conn *xgb.Conn, display string) *domain.X11Info {
 	setup := xproto.Setup(conn)
+	extCookie := xproto.ListExtensions(conn)
+	atoms := internAtoms(conn)
+
 	info := &domain.X11Info{
-		Display:       env.Display,
+		Display:       display,
 		Screen:        conn.DefaultScreen,
 		Vendor:        setup.Vendor,
 		ProtocolMajor: int(setup.ProtocolMajorVersion),
 		ProtocolMinor: int(setup.ProtocolMinorVersion),
+		Extensions:    extensions(extCookie),
 	}
+	info.WindowManager = wmName(conn, setup, atoms.resolve())
 
-	// Round trip one: every request that needs no prior answer goes out before
-	// any reply is read.
-	extCookie := xproto.ListExtensions(conn)
-	checkCookie := internAtom(conn, atomSupportingWMCheck)
-	nameCookie := internAtom(conn, atomNetWMName)
-	utf8Cookie := internAtom(conn, atomUTF8String)
-
-	if reply, err := extCookie.Reply(); err == nil && reply != nil {
-		info.Extensions = make([]string, 0, len(reply.Names))
-		for _, n := range reply.Names {
-			info.Extensions = append(info.Extensions, n.Name)
-		}
-	}
-
-	checkAtom := atomOf(checkCookie)
-	nameAtom := atomOf(nameCookie)
-	utf8Atom := atomOf(utf8Cookie)
-
-	if len(setup.Roots) > conn.DefaultScreen && checkAtom != 0 {
-		root := setup.Roots[conn.DefaultScreen].Root
-		info.WindowManager = windowManager(conn, root, checkAtom, nameAtom, utf8Atom)
-	}
-
-	return info, nil
+	return info
 }
 
-// windowManager walks the EWMH _NET_SUPPORTING_WM_CHECK chain: the root window
-// points at a window owned by the window manager, and that window carries the
+// wmName walks the EWMH _NET_SUPPORTING_WM_CHECK chain: the root window points
+// at a window owned by the window manager, and that window carries the
 // manager's name.
-func windowManager(conn *xgb.Conn, root xproto.Window, check, netName, utf8 xproto.Atom) string {
-	reply, err := xproto.GetProperty(conn, false, root, check, xproto.AtomWindow, 0, 1).Reply()
-	if err != nil || reply == nil || len(reply.Value) < 4 {
-		return ""
-	}
-	owner := xproto.Window(xgb.Get32(reply.Value))
-	if owner == 0 {
-		return ""
+func wmName(conn *xgb.Conn, setup *xproto.SetupInfo, found atomSet) string {
+	owner := checkWindow(conn, setup, found.check)
+	if owner == zero {
+		return noValue
 	}
 
-	if netName != 0 && utf8 != 0 {
-		if name := textProperty(conn, owner, netName, utf8); name != "" {
-			return name
-		}
+	name := textProperty(conn, owner, found.property())
+	if name != noValue {
+		return name
 	}
+
 	// Window managers that predate EWMH only set WM_NAME.
-	return textProperty(conn, owner, xproto.AtomWmName, xproto.AtomString)
+	return textProperty(conn, owner, legacyProperty())
+}
+
+// checkWindow reads _NET_SUPPORTING_WM_CHECK off the root window, which points
+// at the window the manager owns.
+func checkWindow(conn *xgb.Conn, setup *xproto.SetupInfo, check xproto.Atom) xproto.Window {
+	root, ok := rootWindow(conn, setup)
+	if !ok || check == zero {
+		return zero
+	}
+
+	reply, err := xproto.GetProperty(
+		conn, false, root, check, xproto.AtomWindow, zero, oneWord,
+	).Reply()
+
+	return window(reply, err)
+}
+
+// rootWindow is the root of the screen the connection defaulted to.
+func rootWindow(conn *xgb.Conn, setup *xproto.SetupInfo) (xproto.Window, bool) {
+	if len(setup.Roots) <= conn.DefaultScreen {
+		return zero, false
+	}
+
+	return setup.Roots[conn.DefaultScreen].Root, true
+}
+
+// window decodes the single window id a GetProperty reply should carry.
+func window(reply *xproto.GetPropertyReply, err error) xproto.Window {
+	if err != nil || reply == nil || len(reply.Value) < wordBytes {
+		return zero
+	}
+
+	return xproto.Window(xgb.Get32(reply.Value))
+}
+
+// legacyProperty is WM_NAME, which every window manager sets, including the
+// ones that predate EWMH.
+func legacyProperty() property {
+	return property{xproto.AtomWmName, xproto.AtomString}
 }
 
 // textProperty reads a string property, tolerating the BadWindow that a stale
 // _NET_SUPPORTING_WM_CHECK produces after a window manager crash.
-func textProperty(conn *xgb.Conn, win xproto.Window, prop, typ xproto.Atom) string {
-	reply, err := xproto.GetProperty(conn, false, win, prop, typ, 0, maxNameWords).Reply()
-	if err != nil || reply == nil || len(reply.Value) == 0 {
-		return ""
+func textProperty(conn *xgb.Conn, win xproto.Window, prop property) string {
+	if prop.name == zero {
+		return noValue
 	}
-	value := reply.Value
-	if i := bytes.IndexByte(value, 0); i >= 0 {
-		value = value[:i]
+
+	reply, err := xproto.GetProperty(
+		conn, false, win, prop.name, prop.typ, zero, maxNameWords,
+	).Reply()
+	if err != nil || reply == nil {
+		return noValue
 	}
+
+	return firstString(reply.Value)
+}
+
+// firstString takes the leading NUL-terminated string out of a property value,
+// which may carry several.
+func firstString(value []byte) string {
+	for i := range len(value) {
+		if value[i] == '\x00' {
+			return string(value[:i])
+		}
+	}
+
 	return string(value)
+}
+
+// extensions lists what the server advertises, which is how an Xwayland server
+// is told apart from a native one.
+func extensions(cookie xproto.ListExtensionsCookie) []string {
+	reply, err := cookie.Reply()
+	if err != nil || reply == nil {
+		return nil
+	}
+
+	names := make([]string, zero, len(reply.Names))
+	for i := range reply.Names {
+		names = append(names, reply.Names[i].Name)
+	}
+
+	return names
+}
+
+// internAtoms sends all three InternAtom requests before waiting for any of
+// them.
+func internAtoms(conn *xgb.Conn) atomCookies {
+	return atomCookies{
+		check: internAtom(conn, atomSupportingWMCheck),
+		name:  internAtom(conn, atomNetWMName),
+		utf8:  internAtom(conn, atomUTF8String),
+	}
 }
 
 func internAtom(conn *xgb.Conn, name string) xproto.InternAtomCookie {
 	return xproto.InternAtom(conn, true, uint16(len(name)), name)
 }
 
-// atomOf resolves an InternAtom cookie, yielding 0 when the atom does not
+// atomOf resolves an InternAtom cookie, yielding zero when the atom does not
 // exist on this server.
 func atomOf(cookie xproto.InternAtomCookie) xproto.Atom {
 	reply, err := cookie.Reply()
 	if err != nil || reply == nil {
-		return 0
+		return zero
 	}
+
 	return reply.Atom
 }

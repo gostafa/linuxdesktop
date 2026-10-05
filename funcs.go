@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package linuxdesktop
 
 import (
@@ -30,37 +33,49 @@ func Detect() (*Environment, error) {
 	return DetectContext(context.Background())
 }
 
-// DetectContext reports the desktop environment, honouring ctx and opts.
+// DetectContext reports the desktop environment, honoring ctx and opts.
 func DetectContext(ctx context.Context, opts ...Option) (*Environment, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	cfg := core.NewConfig(opts...)
 
-	if runtime.GOOS != "linux" {
-		return &Environment{
-			Display:  DisplayInfo{Protocol: DisplayProtocolUnknown},
-			Session:  SessionInfo{Type: SessionTypeUnknown},
-			Desktop:  DesktopInfo{Environment: DesktopUnknown},
-			Headless: true,
-		}, ErrNotLinux
+	if runtime.GOOS != goosLinux {
+		return elsewhere(), ErrNotLinux
 	}
 
 	bus := dbusconn.New(ctx)
 	defer bus.Close()
 
-	return core.New(adapters(bus, cfg), cfg).Detect(ctx)
+	deps := adapters(bus, cfg)
+
+	return core.New(&deps, cfg).Detect(ctx)
+}
+
+// elsewhere is the answer on a system that has no Linux desktop to describe: a
+// zero-valued Environment marked headless, so a cross-platform caller can
+// import this package unconditionally and branch on the result.
+func elsewhere() *Environment {
+	return &Environment{
+		Display:  DisplayInfo{Protocol: DisplayProtocolUnknown},
+		Session:  SessionInfo{Type: SessionTypeUnknown},
+		Desktop:  DesktopInfo{Environment: DesktopUnknown},
+		Headless: true,
+	}
 }
 
 // OS reports the distribution and kernel identity.
 func OS() (OSInfo, error) {
 	e, err := section(SectionOS)
+
 	return e.OS, err
 }
 
 // Session reports the logind seat session.
 func Session() (SessionInfo, error) {
 	e, err := section(SectionSession)
+
 	return e.Session, err
 }
 
@@ -68,12 +83,14 @@ func Session() (SessionInfo, error) {
 // that is.
 func Display() (DisplayInfo, error) {
 	e, err := section(SectionDisplay)
+
 	return e.Display, err
 }
 
 // Desktop reports the desktop environment.
 func Desktop() (DesktopInfo, error) {
 	e, err := section(SectionDesktop)
+
 	return e.Desktop, err
 }
 
@@ -81,6 +98,7 @@ func Desktop() (DesktopInfo, error) {
 // method that identified it and how far that method can be trusted.
 func Compositor() (CompositorInfo, error) {
 	e, err := section(SectionCompositor)
+
 	return e.Compositor, err
 }
 
@@ -89,12 +107,14 @@ func Compositor() (CompositorInfo, error) {
 // with WithOpenGL.
 func Graphics() (GraphicsInfo, error) {
 	e, err := section(SectionGraphics)
+
 	return e.Graphics, err
 }
 
 // Portal reports whether xdg-desktop-portal is running and what it offers.
 func Portal() (PortalInfo, error) {
 	e, err := section(SectionPortal)
+
 	return e.Portal, err
 }
 
@@ -102,20 +122,24 @@ func Portal() (PortalInfo, error) {
 // path and nothing more, so it is safe on any hot path; Display connects and
 // is therefore the authority.
 func IsWayland() bool {
-	if runtime.GOOS != "linux" {
+	if runtime.GOOS != goosLinux {
 		return false
 	}
+
 	snapshot := env.New().Snapshot()
+
 	return wayland.SocketPath(&snapshot) != ""
 }
 
 // IsX11 reports whether an X server appears to be reachable. Like IsWayland it
 // only stats; a display on a remote host is assumed reachable.
 func IsX11() bool {
-	if runtime.GOOS != "linux" {
+	if runtime.GOOS != goosLinux {
 		return false
 	}
+
 	snapshot := env.New().Snapshot()
+
 	return x11.Available(&snapshot)
 }
 
@@ -137,7 +161,7 @@ func WithSections(s Section) Option { return core.WithSections(s) }
 
 // WithOpenGL asks the graphics drivers directly instead of reading their
 // manifests, which yields a true vendor, renderer and version at the cost of
-// initialising the GPU stack — tens of milliseconds, not microseconds.
+// initializing the GPU stack — tens of milliseconds, not microseconds.
 func WithOpenGL() Option { return core.WithNativeGL() }
 
 // WithProcessScan enables the /proc fallback for compositor detection. It only
@@ -167,6 +191,7 @@ func adapters(bus port.Bus, cfg core.Config) core.Deps {
 	if cfg.ProcessScan {
 		deps.Process = procscan.New(rules.IsCompositorProcess)
 	}
+
 	return deps
 }
 

@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/ebitengine/purego"
-
 	"github.com/gostafa/linuxdesktop/internal/domain"
 )
 

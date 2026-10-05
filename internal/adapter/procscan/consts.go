@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package procscan
 
 const (
@@ -13,4 +16,10 @@ const (
 	// processes means something unusual is going on, and the extra names would
 	// not improve a low-confidence guess.
 	maxMatches = 8
+
+	// zero is the empty length of a line that carries no fields.
+	zero = 0
+
+	// noValue is a process that has gone away between the listing and the read.
+	noValue = ""
 )

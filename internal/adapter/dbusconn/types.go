@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package dbusconn
 
 import (
@@ -13,8 +16,8 @@ import (
 // is the overall detection context, so a wedged bus cannot outlive the run.
 // Individual calls carry their own, shorter deadlines.
 type Bus struct {
-	base  context.Context
-	once  [2]sync.Once
-	conns [2]*dbus.Conn
 	errs  [2]error
+	base  context.Context
+	conns [2]*dbus.Conn
+	once  [2]sync.Once
 }

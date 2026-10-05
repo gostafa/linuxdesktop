@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package logind
 
 import (
@@ -18,126 +21,236 @@ func New(bus port.Bus) *Probe { return &Probe{bus: bus} }
 
 // Session reads the seat session, preferring the filesystem mirror and only
 // falling back to D-Bus when it is unreadable.
-func (p *Probe) Session(ctx context.Context, env *domain.Env) (domain.SessionInfo, error) {
+func (probe *Probe) Session(ctx context.Context, env *domain.Env) (domain.SessionInfo, error) {
 	info := domain.SessionInfo{Type: domain.SessionTypeUnknown}
-
-	id := env.SessionID
-	if id == "" {
-		id = idFromCgroup()
-	}
-	if id == "" {
-		id = idFromScan(os.Getuid())
-	}
-
-	found := false
-	if id != "" {
-		if data, err := sysfs.Bytes(filepath.Join(dirSessions, id)); err == nil {
-			info.ID = id
-			applyFile(&info, data)
-			found = true
-		}
-	}
-	if !found && p.bus != nil {
-		found = p.applyBus(ctx, &info) == nil
-	}
+	found := probe.locate(ctx, &info, env)
 
 	applyEnv(&info, env)
 
-	if !found && info.Type == domain.SessionTypeUnknown && info.ID == "" {
-		return info, ErrNoSession
+	if found || known(&info) {
+		return info, nil
 	}
-	return info, nil
+
+	return info, ErrNoSession
 }
 
-// applyFile fills info from a /run/systemd/sessions/<id> mirror.
+// applyBus fills info from logind's own session object in one round trip.
+func (probe *Probe) applyBus(ctx context.Context, info *domain.SessionInfo) error {
+	props, err := probe.bus.Properties(ctx, port.SystemBus, busName, sessionPath, sessionIface)
+	if err != nil {
+		return err
+	}
+
+	readStrings(info, props)
+	readFlags(info, props)
+
+	info.Seat = structID(props[propSeat])
+
+	return nil
+}
+
+// locate fills info from the filesystem mirror, falling back to logind's own
+// session object when there is none to read.
+func (probe *Probe) locate(
+	ctx context.Context,
+	info *domain.SessionInfo,
+	env *domain.Env,
+) bool {
+	if fromMirror(info, sessionID(env)) {
+		return true
+	}
+
+	if probe.bus == nil {
+		return false
+	}
+
+	return probe.applyBus(ctx, info) == nil
+}
+
+// known reports whether anything at all was learned about the session.
+func known(info *domain.SessionInfo) bool {
+	return info.Type != domain.SessionTypeUnknown || info.ID != noValue
+}
+
+// sessionID resolves this process's session id: from the environment when it
+// says, from the cgroup when it does not, and by scanning as a last resort.
+func sessionID(env *domain.Env) string {
+	if env.SessionID != noValue {
+		return env.SessionID
+	}
+
+	id := idFromCgroup()
+	if id != noValue {
+		return id
+	}
+
+	return idFromScan(os.Getuid())
+}
+
+// fromMirror fills info from a /run/systemd/sessions/<id> mirror, reporting
+// whether there was one to read.
+func fromMirror(info *domain.SessionInfo, id string) bool {
+	if id == noValue {
+		return false
+	}
+
+	data, err := sysfs.Bytes(filepath.Join(dirSessions, id))
+	if err != nil {
+		return false
+	}
+
+	info.ID = id
+	applyFile(info, data)
+
+	return true
+}
+
+// applyFile fills info from the KEY=VALUE body of a session mirror.
 func applyFile(info *domain.SessionInfo, data []byte) {
+	setters := fileSetters()
+
 	sysfs.Each(data, func(key, value string) bool {
-		switch key {
-		case keyUser:
-			info.User = value
-		case keySeat:
-			info.Seat = value
-		case keyType:
-			info.Type = normalizeType(value)
-		case keyDesktop:
-			info.Desktop = value
-		case keyService:
-			info.Name = value
-		case keyActive:
-			info.Active = truthy(value)
-		case keyRemote:
-			info.Remote = truthy(value)
-		case keyState:
-			if value == "active" {
-				info.Active = true
-			}
-		case keyVTNR:
-			info.VTNumber, _ = strconv.Atoi(value)
+		set, ok := setters[key]
+		if ok {
+			set(info, value)
 		}
+
 		return true
 	})
 }
 
-// applyBus fills info from logind's own session object in one round trip.
-func (p *Probe) applyBus(ctx context.Context, info *domain.SessionInfo) error {
-	props, err := p.bus.Properties(ctx, port.SystemBus, busName, sessionPath, sessionIface)
+// fileSetters maps each key of a session mirror onto the field it fills. A key
+// that is absent from the table is one this library has no use for.
+func fileSetters() map[string]fileSetter {
+	return map[string]fileSetter{
+		keyUser:    setUser,
+		keySeat:    setSeat,
+		keyType:    setType,
+		keyDesktop: setDesktop,
+		keyService: setService,
+		keyActive:  setActive,
+		keyRemote:  setRemote,
+		keyState:   setState,
+		keyVTNR:    setVTNumber,
+	}
+}
+
+func setUser(info *domain.SessionInfo, value string) { info.User = value }
+
+func setSeat(info *domain.SessionInfo, value string) { info.Seat = value }
+
+func setDesktop(info *domain.SessionInfo, value string) { info.Desktop = value }
+
+func setService(info *domain.SessionInfo, value string) { info.Name = value }
+
+func setType(info *domain.SessionInfo, value string) { info.Type = normalizeType(value) }
+
+func setActive(info *domain.SessionInfo, value string) { info.Active = truthy(value) }
+
+func setRemote(info *domain.SessionInfo, value string) { info.Remote = truthy(value) }
+
+// setState records the session state, of which only "active" changes anything.
+func setState(info *domain.SessionInfo, value string) {
+	if value == stateActive {
+		info.Active = true
+	}
+}
+
+// setVTNumber records the virtual terminal. A value that is not a number means
+// the session is not on a VT at all, which is what the zero already says.
+func setVTNumber(info *domain.SessionInfo, value string) {
+	number, err := strconv.Atoi(value)
 	if err != nil {
-		return err
+		return
 	}
-	if s, ok := props[propID].(string); ok {
-		info.ID = s
+
+	info.VTNumber = number
+}
+
+// readStrings copies the string-valued properties off the bus reply.
+func readStrings(info *domain.SessionInfo, props map[string]any) {
+	assignText(&info.ID, props[propID])
+	assignText(&info.Desktop, props[propDesktop])
+	assignText(&info.Name, props[propService])
+	assignText(&info.User, props[propName])
+
+	kind, ok := props[propType].(string)
+	if ok {
+		info.Type = normalizeType(kind)
 	}
-	if s, ok := props[propType].(string); ok {
-		info.Type = normalizeType(s)
+}
+
+// readFlags copies the boolean and numeric properties off the same reply.
+func readFlags(info *domain.SessionInfo, props map[string]any) {
+	assignFlag(&info.Remote, props[propRemote])
+	assignFlag(&info.Active, props[propActive])
+
+	number, ok := props[propVTNr].(uint32)
+	if ok {
+		info.VTNumber = int(number)
 	}
-	if s, ok := props[propDesktop].(string); ok {
-		info.Desktop = s
+}
+
+// assignText writes a string property into target, leaving it alone when
+// logind sent nothing, or sent something that is not a string.
+func assignText(target *string, value any) {
+	text, ok := value.(string)
+	if ok {
+		*target = text
 	}
-	if s, ok := props[propService].(string); ok {
-		info.Name = s
+}
+
+// assignFlag writes a boolean property into target on the same terms.
+func assignFlag(target *bool, value any) {
+	flag, ok := value.(bool)
+	if ok {
+		*target = flag
 	}
-	if s, ok := props[propName].(string); ok {
-		info.User = s
-	}
-	if b, ok := props[propRemote].(bool); ok {
-		info.Remote = b
-	}
-	if b, ok := props[propActive].(bool); ok {
-		info.Active = b
-	}
-	if n, ok := props[propVTNr].(uint32); ok {
-		info.VTNumber = int(n)
-	}
-	info.Seat = structID(props[propSeat])
-	return nil
 }
 
 // applyEnv backfills anything logind did not supply and always records the raw
 // XDG variables, which callers frequently want to compare against.
 func applyEnv(info *domain.SessionInfo, env *domain.Env) {
+	backfill(info, env)
+	markRemote(info, env)
+
+	info.XDGSessionType = env.SessionType
+	info.XDGSessionDesktop = env.SessionDesktop
+}
+
+// backfill supplies from the environment whatever logind left empty.
+func backfill(info *domain.SessionInfo, env *domain.Env) {
 	if info.Type == domain.SessionTypeUnknown {
 		info.Type = normalizeType(env.SessionType)
 	}
-	if info.ID == "" {
-		info.ID = env.SessionID
+
+	info.ID = orEnv(info.ID, env.SessionID)
+	info.Desktop = orEnv(info.Desktop, env.SessionDesktop)
+	info.Seat = orEnv(info.Seat, env.Seat)
+	info.User = orEnv(info.User, env.User)
+
+	if info.VTNumber == zero {
+		setVTNumber(info, env.VTNR)
 	}
-	if info.Desktop == "" {
-		info.Desktop = env.SessionDesktop
+}
+
+// orEnv keeps what logind said, falling back to the environment when it said
+// nothing.
+func orEnv(known, fallback string) string {
+	if known != noValue {
+		return known
 	}
-	if info.Seat == "" {
-		info.Seat = env.Seat
-	}
-	if info.User == "" {
-		info.User = env.User
-	}
-	if info.VTNumber == 0 && env.VTNR != "" {
-		info.VTNumber, _ = strconv.Atoi(env.VTNR)
-	}
-	if env.SSHConnection != "" || env.SSHTTY != "" || env.SSHClient != "" {
-		info.Remote = true
-	}
-	info.XDGSessionType = env.SessionType
-	info.XDGSessionDesktop = env.SessionDesktop
+
+	return fallback
+}
+
+// markRemote records an SSH login, which logind does not always flag itself.
+func markRemote(info *domain.SessionInfo, env *domain.Env) {
+	ssh := env.SSHConnection != noValue ||
+		env.SSHTTY != noValue ||
+		env.SSHClient != noValue
+
+	info.Remote = info.Remote || ssh
 }
 
 // idFromCgroup extracts the id from a session-<id>.scope cgroup path, which is
@@ -145,49 +258,79 @@ func applyEnv(info *domain.SessionInfo, env *domain.Env) {
 func idFromCgroup() string {
 	data, err := sysfs.Bytes(pathCgroup)
 	if err != nil {
-		return ""
+		return noValue
 	}
-	i := bytes.Index(data, []byte(cgroupPrefix))
-	if i < 0 {
-		return ""
+
+	return between(data, cgroupPrefix, cgroupSuffix)
+}
+
+// between lifts out the text bracketed by two markers, yielding "" when either
+// of them is missing.
+func between(data []byte, prefix, suffix string) string {
+	start := bytes.Index(data, []byte(prefix))
+	if start < zero {
+		return noValue
 	}
-	rest := data[i+len(cgroupPrefix):]
-	j := bytes.Index(rest, []byte(cgroupSuffix))
-	if j < 0 {
-		return ""
+
+	rest := data[start+len(prefix):]
+
+	end := bytes.Index(rest, []byte(suffix))
+	if end < zero {
+		return noValue
 	}
-	return string(rest[:j])
+
+	return string(rest[:end])
 }
 
 // idFromScan looks for a session owned by uid, preferring an active one.
 func idFromScan(uid int) string {
 	names, err := sysfs.DirNames(dirSessions)
 	if err != nil {
-		return ""
+		return noValue
 	}
-	want := strconv.Itoa(uid)
-	fallback := ""
-	for _, name := range names {
-		if strings.ContainsRune(name, '.') {
-			continue // .ref FIFOs, not session mirrors
-		}
-		data, err := sysfs.Bytes(filepath.Join(dirSessions, name))
-		if err != nil || sysfs.Field(data, keyUID) != want {
+
+	return pickSession(names, strconv.Itoa(uid))
+}
+
+// pickSession is the first active session owned by uid, or failing that the
+// first session owned by uid at all.
+func pickSession(names []string, uid string) string {
+	fallback := noValue
+
+	for i := range names {
+		state, ok := sessionState(names[i], uid)
+		if !ok {
 			continue
 		}
-		if sysfs.Field(data, keyState) == "active" {
-			return name
+
+		if state == stateActive {
+			return names[i]
 		}
-		if fallback == "" {
-			fallback = name
-		}
+
+		fallback = orEnv(fallback, names[i])
 	}
+
 	return fallback
 }
 
+// sessionState reads the STATE of one session mirror, reporting false when the
+// entry is not a mirror or does not belong to uid.
+func sessionState(name, uid string) (string, bool) {
+	if strings.ContainsRune(name, '.') {
+		return noValue, false // .ref FIFOs, not session mirrors
+	}
+
+	data, err := sysfs.Bytes(filepath.Join(dirSessions, name))
+	if err != nil || sysfs.Field(data, keyUID) != uid {
+		return noValue, false
+	}
+
+	return sysfs.Field(data, keyState), true
+}
+
 // normalizeType maps logind's TYPE= and $XDG_SESSION_TYPE onto the enum.
-func normalizeType(s string) domain.SessionType {
-	switch strings.ToLower(s) {
+func normalizeType(raw string) domain.SessionType {
+	switch strings.ToLower(raw) {
 	case "wayland":
 		return domain.SessionTypeWayland
 	case "x11":
@@ -197,20 +340,26 @@ func normalizeType(s string) domain.SessionType {
 	case "mir":
 		return domain.SessionTypeMir
 	}
+
 	return domain.SessionTypeUnknown
 }
 
 // structID pulls the leading string out of a D-Bus (string, objectpath) pair,
 // the shape logind uses for Seat and User.
-func structID(v any) string {
-	fields, ok := v.([]any)
-	if !ok || len(fields) == 0 {
-		return ""
+func structID(value any) string {
+	fields, ok := value.([]any)
+	if !ok || len(fields) == zero {
+		return noValue
 	}
-	s, _ := fields[0].(string)
-	return s
+
+	text, ok := fields[zero].(string)
+	if !ok {
+		return noValue
+	}
+
+	return text
 }
 
-func truthy(s string) bool {
-	return s == "1" || strings.EqualFold(s, "yes") || strings.EqualFold(s, "true")
+func truthy(raw string) bool {
+	return raw == "1" || strings.EqualFold(raw, "yes") || strings.EqualFold(raw, "true")
 }

@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package rules
 
 import (
@@ -14,86 +17,43 @@ func Desktop(env *domain.Env) domain.DesktopInfo {
 		SessionDesktop: env.SessionDesktop,
 		DesktopSession: env.DesktopSession,
 	}
-	if env.CurrentDesktop != "" {
+	if env.CurrentDesktop != noValue {
 		info.CurrentDesktops = strings.Split(env.CurrentDesktop, desktopSeparator)
 	}
 
-	tokens := make([]string, 0, len(info.CurrentDesktops)+2)
-	tokens = append(tokens, info.CurrentDesktops...)
-	tokens = append(tokens, env.SessionDesktop, env.DesktopSession)
-
-	for _, token := range tokens {
-		if token == "" {
-			continue
-		}
-		if de, ok := desktopTokens[normalize(token)]; ok {
-			info.Environment = de
-			info.Name = token
-			return info
-		}
-		if info.Name == "" {
-			info.Name = token
-		}
+	if fromTokens(&info, desktopTokenList(&info, env)) {
+		return info
 	}
 
-	// Pre-XDG markers, still exported by both projects.
-	switch {
-	case env.KDEFullSession != "":
-		info.Environment = domain.DesktopKDE
-		if info.Name == "" {
-			info.Name = "KDE"
-		}
-	case env.GNOMESessionID != "" || env.GNOMESetupDisplay != "":
-		info.Environment = domain.DesktopGNOME
-		if info.Name == "" {
-			info.Name = "GNOME"
-		}
-	}
+	fromLegacy(&info, env)
+
 	return info
 }
 
 // Compositor walks the detection ladder and returns the first answer it
 // reaches, along with the method and confidence that produced it.
 func Compositor(sig *domain.Signals) domain.CompositorInfo {
-	info := domain.CompositorInfo{
-		Kind:       domain.CompositorUnknown,
-		Confidence: domain.ConfidenceUnknown,
-		DetectedBy: domain.DetectedUnknown,
-		Wayland:    sig.WaylandReachable,
-		X11:        sig.X11Reachable,
+	info := unidentified(sig)
+
+	rungs := ladder()
+	for i := range rungs {
+		if found, ok := rungs[i](sig); ok {
+			apply(&info, found)
+
+			return info
+		}
 	}
 
-	if m, ok := fromEnv(&sig.Env); ok {
-		return apply(info, m, domain.ConfidenceHigh, domain.DetectedEnvironment)
-	}
-	if m, ok := fromGlobals(sig.WaylandGlobals); ok {
-		return apply(info, m, domain.ConfidenceHigh, domain.DetectedWayland)
-	}
-	if name := sig.X11WindowManager; name != "" {
-		if m, ok := windowManagerNames[normalize(name)]; ok {
-			return apply(info, m, domain.ConfidenceHigh, domain.DetectedX11EWMH)
-		}
-		// Unrecognised, but the manager did name itself, so keep what it said.
-		return apply(info, match{domain.CompositorUnknown, name},
-			domain.ConfidenceMedium, domain.DetectedX11EWMH)
-	}
-	if m, ok := desktopCompositors[sig.Desktop]; ok {
-		return apply(info, m, domain.ConfidenceMedium, domain.DetectedEnvironment)
-	}
-	if hasWlroots(sig.WaylandGlobals) {
-		return apply(info, match{domain.CompositorUnknown, nameWlroots},
-			domain.ConfidenceLow, domain.DetectedWayland)
-	}
-	if m, ok := fromProcesses(sig.Processes); ok {
-		return apply(info, m, domain.ConfidenceLow, domain.DetectedProcess)
-	}
 	return info
 }
 
 // Protocol reports which display protocol a client should actually use. A
 // reachable server beats what $XDG_SESSION_TYPE claims, because a session type
 // the client cannot connect to is of no use to it.
-func Protocol(sessionType domain.SessionType, waylandAvailable, x11Available bool) domain.DisplayProtocol {
+func Protocol(
+	sessionType domain.SessionType,
+	waylandAvailable, x11Available bool,
+) domain.DisplayProtocol {
 	switch {
 	case waylandAvailable:
 		return domain.DisplayProtocolWayland
@@ -104,6 +64,7 @@ func Protocol(sessionType domain.SessionType, waylandAvailable, x11Available boo
 	case sessionType == domain.SessionTypeX11:
 		return domain.DisplayProtocolX11
 	}
+
 	return domain.DisplayProtocolUnknown
 }
 
@@ -112,77 +73,245 @@ func Headless(waylandAvailable, x11Available bool) bool {
 	return !waylandAvailable && !x11Available
 }
 
-func fromEnv(env *domain.Env) (match, bool) {
-	for _, f := range envFingerprints {
-		if f.value(env) != "" {
-			return f.match, true
-		}
-	}
-	return match{}, false
-}
-
-func fromGlobals(globals []domain.WaylandGlobal) (match, bool) {
-	if len(globals) == 0 {
-		return match{}, false
-	}
-	for _, f := range waylandFingerprints {
-		for i := range globals {
-			if globals[i].Interface == f.iface {
-				return f.match, true
-			}
-		}
-	}
-	return match{}, false
-}
-
-func hasWlroots(globals []domain.WaylandGlobal) bool {
-	for _, marker := range wlrootsMarkers {
-		for i := range globals {
-			if globals[i].Interface == marker {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // IsCompositorProcess reports whether a /proc comm value could name a
 // compositor. The process scanner uses it to discard the several hundred
 // uninteresting processes before paying to verify ownership of the rest.
 func IsCompositorProcess(name string) bool {
 	_, ok := processNames[name]
+
 	return ok
 }
 
-func fromProcesses(names []string) (match, bool) {
-	for _, name := range names {
-		if m, ok := processNames[name]; ok {
-			return m, true
-		}
-	}
-	return match{}, false
+// desktopTokenList is every token that could name a desktop, in the order the
+// XDG variables are meant to be consulted.
+func desktopTokenList(info *domain.DesktopInfo, env *domain.Env) []string {
+	tokens := make([]string, zero, len(info.CurrentDesktops)+extraTokens)
+
+	tokens = append(tokens, info.CurrentDesktops...)
+
+	return append(tokens, env.SessionDesktop, env.DesktopSession)
 }
 
-func apply(info domain.CompositorInfo, m match, c domain.DetectionConfidence, d domain.DetectionMethod) domain.CompositorInfo {
-	info.Kind = m.kind
-	info.Name = m.name
-	info.Confidence = c
-	info.DetectedBy = d
-	return info
+// fromTokens records what the tokens say, reporting whether one of them named a
+// known desktop.
+func fromTokens(info *domain.DesktopInfo, tokens []string) bool {
+	for i := range tokens {
+		if matchToken(info, tokens[i]) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// matchToken records one token's contribution: a recognized token settles the
+// environment, and any non-empty token supplies a name if none was set yet.
+func matchToken(info *domain.DesktopInfo, token string) bool {
+	if token == noValue {
+		return false
+	}
+
+	if de, ok := desktopTokens[normalize(token)]; ok {
+		info.Environment = de
+		info.Name = token
+
+		return true
+	}
+
+	nameIfUnset(info, token)
+
+	return false
+}
+
+// fromLegacy falls back to the pre-XDG markers, still exported by both
+// projects.
+func fromLegacy(info *domain.DesktopInfo, env *domain.Env) {
+	switch {
+	case env.KDEFullSession != noValue:
+		info.Environment = domain.DesktopKDE
+		nameIfUnset(info, "KDE")
+	case env.GNOMESessionID != noValue || env.GNOMESetupDisplay != noValue:
+		info.Environment = domain.DesktopGNOME
+		nameIfUnset(info, "GNOME")
+	default:
+		// No pre-XDG marker either; the desktop stays unknown.
+	}
+}
+
+func nameIfUnset(info *domain.DesktopInfo, name string) {
+	if info.Name == noValue {
+		info.Name = name
+	}
+}
+
+// unidentified is the answer when no rung of the ladder fires: nothing named,
+// though the reachability of each protocol is still known.
+func unidentified(sig *domain.Signals) domain.CompositorInfo {
+	return domain.CompositorInfo{
+		Kind:       domain.CompositorUnknown,
+		Confidence: domain.ConfidenceUnknown,
+		DetectedBy: domain.DetectedUnknown,
+		Wayland:    sig.WaylandReachable,
+		X11:        sig.X11Reachable,
+	}
+}
+
+// ladder is the detection sequence, strongest signal first. Each rung answers
+// from a different source, so the first one to fire is also the most
+// trustworthy one available.
+func ladder() []rung {
+	return []rung{
+		byEnv,
+		byGlobals,
+		byWindowManager,
+		byDesktop,
+		byWlroots,
+		byProcesses,
+	}
+}
+
+// byEnv reads the strongest signal there is: each of these variables is
+// exported by exactly one compositor.
+func byEnv(sig *domain.Signals) (verdict, bool) {
+	for i := range envFingerprints {
+		if envFingerprints[i].value(&sig.Env) == noValue {
+			continue
+		}
+
+		found := envFingerprints[i].match
+
+		return verdict{found, domain.ConfidenceHigh, domain.DetectedEnvironment}, true
+	}
+
+	return verdict{}, false
+}
+
+// byGlobals identifies a compositor from an interface only it advertises.
+func byGlobals(sig *domain.Signals) (verdict, bool) {
+	for i := range waylandFingerprints {
+		if !advertises(sig.WaylandGlobals, waylandFingerprints[i].iface) {
+			continue
+		}
+
+		found := waylandFingerprints[i].match
+
+		return verdict{found, domain.ConfidenceHigh, domain.DetectedWayland}, true
+	}
+
+	return verdict{}, false
+}
+
+// byWindowManager reads the EWMH name the manager published about itself.
+func byWindowManager(sig *domain.Signals) (verdict, bool) {
+	name := sig.X11WindowManager
+	if name == noValue {
+		return verdict{}, false
+	}
+
+	if found, ok := windowManagerNames[normalize(name)]; ok {
+		return verdict{found, domain.ConfidenceHigh, domain.DetectedX11EWMH}, true
+	}
+
+	// Unrecognized, but the manager did name itself, so keep what it said.
+	said := match{domain.CompositorUnknown, name}
+
+	return verdict{said, domain.ConfidenceMedium, domain.DetectedX11EWMH}, true
+}
+
+// byDesktop infers the compositor a desktop environment ships with, which is
+// an inference rather than an observation and never better than medium.
+func byDesktop(sig *domain.Signals) (verdict, bool) {
+	found, ok := desktopCompositors[sig.Desktop]
+	if !ok {
+		return verdict{}, false
+	}
+
+	return verdict{found, domain.ConfidenceMedium, domain.DetectedEnvironment}, true
+}
+
+// byWlroots narrows the field to the wlroots family without naming a member of
+// it.
+func byWlroots(sig *domain.Signals) (verdict, bool) {
+	if !hasWlroots(sig.WaylandGlobals) {
+		return verdict{}, false
+	}
+
+	family := match{domain.CompositorUnknown, nameWlroots}
+
+	return verdict{family, domain.ConfidenceLow, domain.DetectedWayland}, true
+}
+
+// byProcesses is the weakest signal: a matching process may belong to another
+// seat entirely.
+func byProcesses(sig *domain.Signals) (verdict, bool) {
+	for i := range sig.Processes {
+		found, ok := processNames[sig.Processes[i]]
+		if !ok {
+			continue
+		}
+
+		return verdict{found, domain.ConfidenceLow, domain.DetectedProcess}, true
+	}
+
+	return verdict{}, false
+}
+
+func hasWlroots(globals []domain.WaylandGlobal) bool {
+	for i := range wlrootsMarkers {
+		if advertises(globals, wlrootsMarkers[i]) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// advertises reports whether a registry listing carries a named interface.
+func advertises(globals []domain.WaylandGlobal, iface string) bool {
+	for i := range globals {
+		if globals[i].Interface == iface {
+			return true
+		}
+	}
+
+	return false
+}
+
+func apply(info *domain.CompositorInfo, found verdict) {
+	info.Kind = found.kind
+	info.Name = found.name
+	info.Confidence = found.confidence
+	info.DetectedBy = found.method
 }
 
 // normalize lowercases and drops every non-alphanumeric byte, so that
 // "X-Cinnamon", "Mutter (Muffin)" and "plasma-wayland" all reduce to a stable
 // lookup key.
-func normalize(s string) string {
-	b := make([]byte, 0, len(s))
-	for i := 0; i < len(s); i++ {
-		switch c := s[i]; {
-		case c >= 'A' && c <= 'Z':
-			b = append(b, c+('a'-'A'))
-		case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
-			b = append(b, c)
-		}
+func normalize(raw string) string {
+	out := make([]byte, zero, len(raw))
+	for i := range len(raw) {
+		out = appendKey(out, raw[i])
 	}
-	return string(b)
+
+	return string(out)
 }
+
+// appendKey keeps a byte that can appear in a lookup key, lowercasing letters
+// on the way through and dropping everything else.
+func appendKey(out []byte, char byte) []byte {
+	if upper(char) {
+		return append(out, char+('a'-'A'))
+	}
+
+	if lower(char) || digit(char) {
+		return append(out, char)
+	}
+
+	return out
+}
+
+func upper(char byte) bool { return char >= 'A' && char <= 'Z' }
+
+func lower(char byte) bool { return char >= 'a' && char <= 'z' }
+
+func digit(char byte) bool { return char >= '0' && char <= '9' }

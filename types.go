@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package linuxdesktop
 
 import (
@@ -13,9 +16,9 @@ type (
 	SessionType = domain.SessionType
 	// DisplayProtocol is the windowing protocol the process should speak.
 	DisplayProtocol = domain.DisplayProtocol
-	// DesktopEnvironment is a recognised desktop environment.
+	// DesktopEnvironment is a recognized desktop environment.
 	DesktopEnvironment = domain.DesktopEnvironment
-	// CompositorKind is a recognised window manager or Wayland compositor.
+	// CompositorKind is a recognized window manager or Wayland compositor.
 	CompositorKind = domain.CompositorKind
 	// DetectionConfidence grades how much a detection result can be trusted.
 	DetectionConfidence = domain.DetectionConfidence

@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package sysfs
 
 import "sync"
@@ -8,6 +11,7 @@ import "sync"
 var scratch = sync.Pool{
 	New: func() any {
 		b := make([]byte, scratchSize)
+
 		return &b
 	},
 }

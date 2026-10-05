@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package env
 
 import (
@@ -49,5 +52,6 @@ func firstNonEmpty(vals ...string) string {
 			return v
 		}
 	}
+
 	return ""
 }

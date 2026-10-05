@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package desktop
 
 import (
@@ -15,7 +18,9 @@ func New(bus port.Bus) *Probe { return &Probe{bus: bus} }
 // available, its version.
 func (p *Probe) Desktop(ctx context.Context, env *domain.Env) (domain.DesktopInfo, error) {
 	info := rules.Desktop(env)
+
 	info.Version = p.version(ctx, env, info.Environment)
+
 	return info, nil
 }
 
@@ -25,15 +30,26 @@ func (p *Probe) version(ctx context.Context, env *domain.Env, de domain.DesktopE
 		if p.bus == nil {
 			return ""
 		}
-		v, err := p.bus.Property(ctx, port.SessionBus, shellName, shellPath, shellIface, shellVersion)
+
+		v, err := p.bus.Property(
+			ctx,
+			port.SessionBus,
+			shellName,
+			shellPath,
+			shellIface,
+			shellVersion,
+		)
 		if err != nil {
 			return ""
 		}
+
 		s, _ := v.(string)
+
 		return s
 	case domain.DesktopKDE:
 		// Major version only; Plasma exposes nothing finer without a subprocess.
 		return env.KDESessionVersion
 	}
+
 	return ""
 }

@@ -54,7 +54,7 @@
 // A run performs no subprocesses at all — no loginctl, no xrandr, no glxinfo.
 // Probes run concurrently, connections are made once and shared, and the whole
 // thing is normally a few milliseconds. The exception is WithOpenGL, which
-// initialises the GPU driver to obtain a true renderer string and can take
+// initializes the GPU driver to obtain a true renderer string and can take
 // tens of milliseconds; it is off by default.
 //
 // # Portability

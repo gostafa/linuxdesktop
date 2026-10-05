@@ -1,4 +1,4 @@
-// Package core is the centre of the hexagon: it runs the probes and merges
+// Package core is the center of the hexagon: it runs the probes and merges
 // their answers into an Environment.
 //
 // It depends on package port and package rules, and on no adapter. That is
@@ -8,7 +8,7 @@
 //
 // Detection happens in two stages. Stage one fans every independent probe out
 // across goroutines, because the cost of a run is dominated by I/O that has no
-// reason to be serialised: two socket handshakes, a D-Bus round trip and a few
+// reason to be serialized: two socket handshakes, a D-Bus round trip and a few
 // dozen small file reads. Stage two is a pure merge over the collected
 // signals, so all the reasoning happens with every fact already in hand and
 // none of it has to be redone.

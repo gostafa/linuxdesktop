@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package sysfs
 
 import (
@@ -11,58 +14,75 @@ import (
 // String reads a small file and returns its contents with surrounding
 // whitespace removed. It allocates once, for the returned string.
 func String(path string) (string, error) {
-	bp := scratch.Get().(*[]byte)
-	n, err := readInto(path, bp)
+	buf := take()
+
+	read, err := readInto(path, buf)
 	if err != nil {
-		scratch.Put(bp)
-		return "", err
+		scratch.Put(buf)
+
+		return noValue, err
 	}
-	s := string(bytes.TrimSpace((*bp)[:n]))
-	scratch.Put(bp)
-	return s, nil
+
+	out := string(bytes.TrimSpace((*buf)[:read]))
+	scratch.Put(buf)
+
+	return out, nil
 }
 
 // Trimmed is String with the error discarded. An unreadable file yields "",
 // which is what every caller in this library wants: an absent sysfs attribute
 // is missing information, not a failure.
 func Trimmed(path string) string {
-	s, _ := String(path)
-	return s
+	out, _ := String(path)
+
+	return out
 }
 
 // Bytes reads a file and returns an owned copy of its contents.
 func Bytes(path string) ([]byte, error) {
-	bp := scratch.Get().(*[]byte)
-	n, err := readInto(path, bp)
+	buf := take()
+
+	read, err := readInto(path, buf)
 	if err != nil {
-		scratch.Put(bp)
+		scratch.Put(buf)
+
 		return nil, err
 	}
-	out := make([]byte, n)
-	copy(out, (*bp)[:n])
-	scratch.Put(bp)
+
+	out := make([]byte, read)
+	copy(out, (*buf)[:read])
+	scratch.Put(buf)
+
 	return out, nil
 }
 
 // IsSocket reports whether path exists and is a unix socket. This is the
 // cheapest possible "is there a display server here" check.
 func IsSocket(path string) bool {
-	fi, err := os.Stat(path)
-	return err == nil && fi.Mode()&os.ModeSocket != 0
+	stat, err := os.Stat(path)
+
+	return err == nil && stat.Mode().Type() == os.ModeSocket
 }
 
 // DirNames lists the entry names of a directory. It uses Readdirnames so the
 // kernel is never asked to stat entries the caller may not care about.
 func DirNames(path string) ([]string, error) {
-	f, err := os.Open(path)
+	dir, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	names, err := f.Readdirnames(-1)
-	f.Close()
+
+	names, err := dir.Readdirnames(-1)
+	closed := dir.Close()
+
+	if err == nil {
+		err = closed
+	}
+
 	if err != nil && !errors.Is(err, io.EOF) {
 		return names, err
 	}
+
 	return names, nil
 }
 
@@ -72,8 +92,9 @@ func DirNames(path string) ([]string, error) {
 func LinkBase(path string) string {
 	target, err := os.Readlink(path)
 	if err != nil {
-		return ""
+		return noValue
 	}
+
 	return filepath.Base(target)
 }
 
@@ -81,18 +102,13 @@ func LinkBase(path string) string {
 // fn stops the walk. Blank lines and # comments are skipped, and matching
 // surrounding quotes are stripped from values.
 func Each(data []byte, fn func(key, value string) bool) {
-	for len(data) > 0 {
-		var line []byte
-		line, data = cutLine(data)
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 || line[0] == '#' {
+	for line := range bytes.Lines(data) {
+		key, value, ok := pair(line)
+		if !ok {
 			continue
 		}
-		eq := bytes.IndexByte(line, '=')
-		if eq < 0 {
-			continue
-		}
-		if !fn(string(bytes.TrimSpace(line[:eq])), unquote(bytes.TrimSpace(line[eq+1:]))) {
+
+		if !fn(key, value) {
 			return
 		}
 	}
@@ -101,76 +117,125 @@ func Each(data []byte, fn func(key, value string) bool) {
 // Field returns the value of key in a KEY=VALUE file, or "" when it is absent.
 // Nothing is allocated until the key matches.
 func Field(data []byte, key string) string {
-	for len(data) > 0 {
-		var line []byte
-		line, data = cutLine(data)
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 || line[0] == '#' {
-			continue
+	for line := range bytes.Lines(data) {
+		name, value, ok := pair(line)
+		if ok && name == key {
+			return value
 		}
-		eq := bytes.IndexByte(line, '=')
-		if eq < 0 {
-			continue
-		}
-		if string(bytes.TrimSpace(line[:eq])) != key {
-			continue
-		}
-		return unquote(bytes.TrimSpace(line[eq+1:]))
 	}
-	return ""
+
+	return noValue
 }
 
-// readInto fills *bp with the contents of path, growing the buffer only when
-// the file turns out to be larger than the pooled scratch size.
-func readInto(path string, bp *[]byte) (int, error) {
-	f, err := os.Open(path)
+// take borrows a scratch buffer, falling back to a fresh one on the impossible
+// day the pool hands back something else.
+func take() *[]byte {
+	if buf, ok := scratch.Get().(*[]byte); ok {
+		return buf
+	}
+
+	fresh := make([]byte, scratchSize)
+
+	return &fresh
+}
+
+// readInto fills *buf with the contents of path and reports how many bytes it
+// holds.
+func readInto(path string, buf *[]byte) (int, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		return 0, err
+		return zero, err
 	}
-	defer f.Close()
 
-	buf := *bp
-	n := 0
-	for {
-		if n == len(buf) {
-			if n >= maxFileSize {
-				break
-			}
-			grown := make([]byte, len(buf)*2)
-			copy(grown, buf)
-			buf = grown
-		}
-		r, rerr := f.Read(buf[n:])
-		n += r
-		if rerr != nil {
-			*bp = buf
-			if errors.Is(rerr, io.EOF) {
-				return n, nil
-			}
-			return n, rerr
-		}
-		if r == 0 {
-			break
-		}
+	read, err := drain(file, buf)
+	closed := file.Close()
+
+	if err == nil {
+		err = closed
 	}
-	*bp = buf
-	return n, nil
+
+	return read, err
 }
 
-// cutLine splits off the first line, returning it and the remainder.
-func cutLine(data []byte) (line, rest []byte) {
-	if i := bytes.IndexByte(data, '\n'); i >= 0 {
-		return data[:i], data[i+1:]
+// drain reads file to its end, letting step decide when the buffer must grow.
+func drain(file io.Reader, buf *[]byte) (int, error) {
+	read := zero
+
+	for {
+		got, err := step(file, buf, read)
+
+		read += got
+
+		if err != nil {
+			return read, sansEOF(err)
+		}
+
+		if got == zero {
+			return read, nil
+		}
 	}
-	return data, nil
+}
+
+// step reads one chunk into the free space of *buf, doubling the buffer first
+// when it is full. Reaching maxFileSize ends the read rather than growing past
+// it, so a hostile path cannot allocate without bound.
+func step(file io.Reader, buf *[]byte, read int) (int, error) {
+	if read < len(*buf) {
+		return file.Read((*buf)[read:])
+	}
+
+	if read >= maxFileSize {
+		return zero, io.EOF
+	}
+
+	grown := make([]byte, len(*buf)*bufferGrowth)
+	copy(grown, *buf)
+
+	*buf = grown
+
+	return file.Read((*buf)[read:])
+}
+
+// sansEOF turns the io.EOF that ends every complete read into success.
+func sansEOF(err error) error {
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+
+	return err
+}
+
+// pair lifts one KEY=VALUE pair off a line, reporting false for a blank line, a
+// comment, or a line carrying no separator.
+func pair(line []byte) (key, value string, ok bool) {
+	before, after, cut := bytes.Cut(bytes.TrimSpace(line), []byte{separatorByte})
+	if !cut || comment(before) {
+		return noValue, noValue, false
+	}
+
+	return string(bytes.TrimSpace(before)), unquote(bytes.TrimSpace(after)), true
+}
+
+// comment reports whether what parsed as a key is really a comment.
+func comment(key []byte) bool {
+	return len(key) > zero && key[zero] == commentByte
 }
 
 // unquote strips one layer of matching single or double quotes.
-func unquote(b []byte) string {
-	if len(b) >= 2 {
-		if c := b[0]; (c == '"' || c == '\'') && b[len(b)-1] == c {
-			b = b[1 : len(b)-1]
-		}
+func unquote(raw []byte) string {
+	if len(raw) <= quoteWidth {
+		return string(raw)
 	}
-	return string(b)
+
+	lead := raw[zero]
+	if !quote(lead) || raw[len(raw)-quoteWidth] != lead {
+		return string(raw)
+	}
+
+	return string(raw[quoteWidth : len(raw)-quoteWidth])
+}
+
+// quote reports whether char is one of the two quoting bytes.
+func quote(char byte) bool {
+	return char == '"' || char == '\''
 }

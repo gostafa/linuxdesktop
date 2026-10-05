@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package linuxdesktop
 
 import "github.com/gostafa/linuxdesktop/internal/domain"
@@ -18,7 +21,7 @@ const (
 	DisplayProtocolX11     = domain.DisplayProtocolX11
 )
 
-// Recognised desktop environments.
+// Recognized desktop environments.
 const (
 	DesktopUnknown  = domain.DesktopUnknown
 	DesktopGNOME    = domain.DesktopGNOME
@@ -33,7 +36,7 @@ const (
 	DesktopPantheon = domain.DesktopPantheon
 )
 
-// Recognised compositors and window managers. Anything outside this set is
+// Recognized compositors and window managers. Anything outside this set is
 // reported as CompositorUnknown with its real name in CompositorInfo.Name.
 const (
 	CompositorUnknown  = domain.CompositorUnknown
@@ -87,3 +90,7 @@ const (
 // ExtensionXWayland is the X11 extension that distinguishes an Xwayland server
 // from a native X.Org one. It appears in X11Info.Extensions.
 const ExtensionXWayland = domain.ExtensionXWayland
+
+// goosLinux is what the Go runtime calls the one operating system this library
+// has anything to say about.
+const goosLinux = "linux"

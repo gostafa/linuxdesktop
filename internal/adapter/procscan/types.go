@@ -1,9 +1,22 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package procscan
 
-// Probe implements port.ProcessProbe.
-//
-// filter decides which command names are worth confirming. It is injected
-// rather than hard-coded so the compositor table lives in exactly one place.
-type Probe struct {
-	filter func(string) bool
-}
+type (
+	// Probe implements port.ProcessProbe. filter selects the command names
+	// worth confirming ownership of.
+	Probe struct {
+		filter func(string) bool
+	}
+
+	// scanner walks /proc once, collecting the command names of this user's
+	// processes that pass the filter. seen suppresses the duplicates a
+	// multi-process desktop produces in quantity.
+	scanner struct {
+		filter  func(string) bool
+		seen    map[string]bool
+		matches []string
+		uid     string
+	}
+)

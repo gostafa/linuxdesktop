@@ -1,3 +1,6 @@
+// Gostafa 2026.
+// SPDX-License-Identifier: Apache-2.0.
+
 package osinfo
 
 // archNames maps Go's GOARCH spelling onto the machine name uname(2) reports,
