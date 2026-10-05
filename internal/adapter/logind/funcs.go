@@ -274,12 +274,12 @@ func between(data []byte, prefix, suffix string) string {
 
 	rest := data[start+len(prefix):]
 
-	end := bytes.Index(rest, []byte(suffix))
-	if end < zero {
+	before, _, ok := bytes.Cut(rest, []byte(suffix))
+	if !ok {
 		return noValue
 	}
 
-	return string(rest[:end])
+	return string(before)
 }
 
 // idFromScan looks for a session owned by uid, preferring an active one.

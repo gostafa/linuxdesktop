@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -85,13 +86,7 @@ func orVendor(known, library string) string {
 // hasDRIDrivers reports whether Mesa's DRI drivers are installed, which is the
 // fallback evidence that OpenGL is present on a system without glvnd.
 func hasDRIDrivers() bool {
-	for i := range driDirs {
-		if hasDRIDriver(driDirs[i]) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(driDirs, hasDRIDriver)
 }
 
 func hasDRIDriver(dir string) bool {

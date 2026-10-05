@@ -24,6 +24,7 @@ type (
 	// it and how far that method can be trusted.
 	verdict struct {
 		match
+
 		confidence domain.DetectionConfidence
 		method     domain.DetectionMethod
 	}

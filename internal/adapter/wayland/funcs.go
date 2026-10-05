@@ -213,6 +213,7 @@ func listen(ctx context.Context, path string) ([]domain.WaylandGlobal, error) {
 	globals, err := converse(ctx, conn)
 
 	closed := conn.Close()
+
 	if err == nil {
 		err = closed
 	}

@@ -67,12 +67,12 @@ type (
 	// collector gathers what the probes find. Each one runs on its own
 	// goroutine, so every field here is written while holding lock.
 	collector struct {
-		failed  []error
-		wait    sync.WaitGroup
 		out     *domain.Environment
 		sig     *domain.Signals
 		x11     *domain.X11Info
 		wayland *domain.WaylandInfo
+		failed  []error
+		wait    sync.WaitGroup
 		lock    sync.Mutex
 	}
 )

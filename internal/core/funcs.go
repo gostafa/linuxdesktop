@@ -6,6 +6,7 @@ package core
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/gostafa/linuxdesktop/internal/domain"
@@ -17,6 +18,7 @@ import (
 // to construct in the first place.
 func NewConfig(opts ...Option) Config {
 	cfg := DefaultConfig
+
 	for i := range opts {
 		if opts[i] != nil {
 			opts[i](&cfg)
@@ -222,6 +224,7 @@ func (eng *Engine) run(ctx context.Context, gather *collector) {
 // pays for a repeated lookup.
 func (eng *Engine) snapshot() *domain.Signals {
 	sig := &domain.Signals{}
+
 	if eng.deps.Env != nil {
 		sig.Env = eng.deps.Env.Snapshot()
 	}
@@ -352,11 +355,5 @@ func hasExtension(info *domain.X11Info, name string) bool {
 		return false
 	}
 
-	for i := range info.Extensions {
-		if info.Extensions[i] == name {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(info.Extensions, name)
 }

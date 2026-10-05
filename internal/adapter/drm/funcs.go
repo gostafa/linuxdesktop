@@ -32,6 +32,7 @@ func (Probe) GPUs(_ context.Context) ([]domain.GPUInfo, string, error) {
 	slices.Sort(entries)
 
 	gpus, primary := collect(entries)
+
 	err = resolveModels(gpus)
 
 	return gpus, orFirst(primary, gpus), err
@@ -293,6 +294,7 @@ func modelLookup(gpu *domain.GPUInfo) (vendor, device string, ok bool) {
 // countPending is how many names the scan is looking for in total.
 func countPending(pending map[string]map[string][]int) int {
 	left := zero
+
 	for vendor := range pending {
 		left += len(pending[vendor])
 	}

@@ -132,6 +132,7 @@ func describe(conn *xgb.Conn, display string) *domain.X11Info {
 		ProtocolMinor: int(setup.ProtocolMinorVersion),
 		Extensions:    extensions(extCookie),
 	}
+
 	info.WindowManager = wmName(conn, setup, atoms.resolve())
 
 	return info
@@ -214,7 +215,7 @@ func textProperty(conn *xgb.Conn, win xproto.Window, prop property) string {
 // firstString takes the leading NUL-terminated string out of a property value,
 // which may carry several.
 func firstString(value []byte) string {
-	for i := range len(value) {
+	for i := range value {
 		if value[i] == '\x00' {
 			return string(value[:i])
 		}

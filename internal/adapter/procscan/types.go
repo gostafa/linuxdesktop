@@ -16,7 +16,7 @@ type (
 	scanner struct {
 		filter  func(string) bool
 		seen    map[string]bool
-		matches []string
 		uid     string
+		matches []string
 	}
 )

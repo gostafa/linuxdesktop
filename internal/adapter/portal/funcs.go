@@ -23,11 +23,13 @@ func New(bus port.Bus) *Probe { return &Probe{bus: bus} }
 // interfaces the active backend exports.
 func (probe *Probe) Portal(ctx context.Context, env *domain.Env) (domain.PortalInfo, error) {
 	info := domain.PortalInfo{Backend: backend(env)}
+
 	if probe.bus == nil {
 		return info, nil
 	}
 
 	owned, err := probe.bus.HasOwner(ctx, port.SessionBus, busName)
+
 	info.Available = owned
 
 	if err != nil || !owned {
@@ -63,6 +65,7 @@ func (probe *Probe) interfaces(
 // applyInterfaces marks every portal interface the backend exports.
 func applyInterfaces(info *domain.PortalInfo, ifaces []iface) {
 	flags := interfaceFlags()
+
 	for i := range ifaces {
 		record(info, flags, ifaces[i].Name)
 	}
