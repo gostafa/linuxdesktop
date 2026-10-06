@@ -34,15 +34,11 @@ const (
 	SessionTypeMir     SessionType = "mir"
 
 	// DisplayProtocolUnknown indicates an unidentified display protocol.
-	//nolint:goconst // Distinct enum types intentionally share their wire values.
 	DisplayProtocolUnknown DisplayProtocol = DisplayProtocol(SessionTypeUnknown)
-	//nolint:goconst // Distinct enum types intentionally share their wire values.
 	DisplayProtocolWayland DisplayProtocol = DisplayProtocol(SessionTypeWayland)
-	//nolint:goconst // Distinct enum types intentionally share their wire values.
-	DisplayProtocolX11 DisplayProtocol = DisplayProtocol(SessionTypeX11)
+	DisplayProtocolX11     DisplayProtocol = DisplayProtocol(SessionTypeX11)
 
 	// DesktopUnknown indicates an unidentified desktop environment.
-	//nolint:goconst // Distinct enum types intentionally share their wire values.
 	DesktopUnknown  DesktopEnvironment = DesktopEnvironment(SessionTypeUnknown)
 	DesktopGNOME    DesktopEnvironment = "gnome"
 	DesktopKDE      DesktopEnvironment = "kde"
@@ -58,7 +54,6 @@ const (
 	// CompositorUnknown indicates an unrecognized compositor or window manager.
 	// Its raw name is preserved in
 	// CompositorInfo.Name, so no information is lost.
-	//nolint:goconst // Distinct enum types intentionally share their wire values.
 	CompositorUnknown  CompositorKind = CompositorKind(SessionTypeUnknown)
 	CompositorMutter   CompositorKind = "mutter"
 	CompositorKWin     CompositorKind = "kwin"
@@ -75,7 +70,6 @@ const (
 	CompositorAwesome  CompositorKind = "awesome"
 
 	// ConfidenceUnknown indicates that detection confidence is unavailable.
-	//nolint:goconst // Distinct enum types intentionally share their wire values.
 	ConfidenceUnknown DetectionConfidence = DetectionConfidence(SessionTypeUnknown)
 	ConfidenceLow     DetectionConfidence = "low"
 	ConfidenceMedium  DetectionConfidence = "medium"
@@ -83,7 +77,6 @@ const (
 
 	// DetectedUnknown indicates an unidentified detection method. The methods
 	// are roughly ordered from cheapest to most invasive.
-	//nolint:goconst // Distinct enum types intentionally share their wire values.
 	DetectedUnknown     DetectionMethod = DetectionMethod(SessionTypeUnknown)
 	DetectedEnvironment DetectionMethod = "environment"
 	DetectedLogind      DetectionMethod = "logind"
