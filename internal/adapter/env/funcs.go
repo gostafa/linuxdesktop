@@ -71,3 +71,6 @@ func firstNonEmpty(vals ...string) string {
 
 	return ""
 }
+
+// Snapshot delegates to the configured function.
+func (run Func[T]) Snapshot() T { return run() }

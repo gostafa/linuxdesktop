@@ -10,7 +10,7 @@ import (
 type (
 	// Section selects which parts of an Environment to populate. Sections are
 	// a bitmask so a caller can pay only for what it reads.
-	Section uint16
+	Section = uint16
 
 	// Environment is the complete picture of the desktop the process is
 	// running in.
@@ -25,32 +25,32 @@ type (
 	]
 
 	// CompositorKind is a recognized window manager or Wayland compositor.
-	CompositorKind string
+	CompositorKind = string
 
 	// DetectionConfidence grades how much a detection result can be trusted.
-	DetectionConfidence string
+	DetectionConfidence = string
 
 	// DetectionMethod records which signal produced a detection result.
-	DetectionMethod string
+	DetectionMethod = string
 
 	// CompositorInfo identifies the compositor or window manager, and says how
 	// certain that identification is.
 	CompositorInfo = schema.CompositorInfo[CompositorKind, DetectionConfidence, DetectionMethod]
 
 	// DesktopEnvironment is a recognized desktop environment.
-	DesktopEnvironment string
+	DesktopEnvironment = string
 
 	// DesktopInfo identifies the desktop environment.
 	DesktopInfo = schema.DesktopInfo[DesktopEnvironment]
 
 	// DisplayProtocol is the windowing protocol the process should speak.
-	DisplayProtocol string
+	DisplayProtocol = string
 
 	// DisplayInfo describes which display servers are reachable.
 	DisplayInfo = schema.DisplayInfo[X11Info, WaylandInfo, DisplayProtocol]
 
 	// X11Info is the result of a real connection to an X server.
-	X11Info struct {
+	X11Info = struct {
 		// Display x display address used for the connection.
 		Display string `json:"display"`
 		// Vendor vendor name reported by the driver or server.
@@ -71,7 +71,7 @@ type (
 	WaylandInfo = schema.WaylandInfo[WaylandGlobal]
 
 	// WaylandGlobal is one entry from the compositor's global registry.
-	WaylandGlobal struct {
+	WaylandGlobal = struct {
 		// Interface fully qualified Wayland interface name.
 		Interface string `json:"interface"`
 		// Name numeric object name assigned by the Wayland registry.
@@ -84,7 +84,7 @@ type (
 	GraphicsInfo = schema.GraphicsInfo[OpenGLInfo, VulkanInfo, GPUInfo]
 
 	// GPUInfo is one DRM device and its PCI identity.
-	GPUInfo struct {
+	GPUInfo = struct {
 		// ID identifier reported by the underlying system.
 		ID string `json:"id"`
 		// Vendor vendor name reported by the driver or server.
@@ -110,7 +110,7 @@ type (
 	}
 
 	// OpenGLInfo describes the OpenGL implementation.
-	OpenGLInfo struct {
+	OpenGLInfo = struct {
 		// Vendor vendor name reported by the driver or server.
 		Vendor string `json:"vendor,omitempty"`
 		// Renderer openGL renderer string from the live driver.
@@ -122,7 +122,7 @@ type (
 	}
 
 	// VulkanInfo describes the Vulkan loader and its ICDs.
-	VulkanInfo struct {
+	VulkanInfo = struct {
 		// Version version reported by the source, when available.
 		Version string `json:"version,omitempty"`
 		// Available whether the implementation or service was detected.
@@ -130,7 +130,7 @@ type (
 	}
 
 	// OSInfo describes the operating system and kernel.
-	OSInfo struct {
+	OSInfo = struct {
 		// Name human-readable name reported by the source.
 		Name string `json:"name"`
 		// PrettyName human-readable distribution name from os-release.
@@ -155,7 +155,7 @@ type (
 
 	// PortalInfo describes xdg-desktop-portal and which of its interfaces the
 	// running backend actually exports.
-	PortalInfo struct {
+	PortalInfo = struct {
 		// Backend preferred or matching portal implementation.
 		Backend string `json:"backend,omitempty"`
 		// Available whether the implementation or service was detected.
@@ -179,7 +179,7 @@ type (
 	}
 
 	// SessionType is the kind of seat session the process is attached to.
-	SessionType string
+	SessionType = string
 
 	// SessionInfo describes the logind seat session.
 	SessionInfo = schema.SessionInfo[SessionType]
@@ -187,7 +187,7 @@ type (
 	// Env is every environment variable the library will ever consult, read
 	// once at the start of a detection run so no probe pays for a repeated
 	// lookup.
-	Env struct {
+	Env = struct {
 		// SessionID unmodified XDG_SESSION_ID value.
 		SessionID string
 		// SessionType unmodified XDG_SESSION_TYPE value.
@@ -250,7 +250,7 @@ type (
 	Signals = evidence[Env, DesktopEnvironment, WaylandGlobal]
 
 	// evidence combines environment, desktop, and registry signals for classification.
-	evidence[E, D, G any] struct {
+	evidence[E, D, G any] = struct {
 		// E environment snapshot taken before concurrent probes run.
 		Env E
 		// Desktop desktop environment identified from collected evidence.

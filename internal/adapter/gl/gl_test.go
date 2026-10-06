@@ -30,7 +30,7 @@ func TestManifestStack(t *testing.T) {
 
 	t.Parallel()
 	files := t.TempDir()
-	if opengl, vulkan, err := stack(t.Context(), files); err != nil || opengl.Available ||
+	if opengl, vulkan, err := detectStack(t.Context(), files); err != nil || opengl.Available ||
 		vulkan.Available {
 		t.Fatal(opengl, vulkan, err)
 	}
@@ -56,7 +56,7 @@ func TestManifestStack(t *testing.T) {
 		filepath.Join(vulkanICDDirs[0], "vendor.json"),
 		`{"ICD":{"api_version":"1.3.9"}}`,
 	)
-	opengl, vulkan, err := stack(t.Context(), files)
+	opengl, vulkan, err := detectStack(t.Context(), files)
 	if err != nil || !opengl.Available || opengl.Vendor != "NVIDIA" || !vulkan.Available ||
 		vulkan.Version != "1.3.9" {
 		t.Fatal(opengl, vulkan, err)

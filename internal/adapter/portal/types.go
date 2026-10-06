@@ -4,13 +4,17 @@
 package portal
 
 import (
+	"context"
+
 	"github.com/gostafa/linuxdesktop/internal/domain"
-	"github.com/gostafa/linuxdesktop/internal/probe"
 )
 
 type (
+	// Func delegates the probe to its configured function.
+	Func[E, T any] func(ctx context.Context, env *E) (T, error)
+
 	// Probe implements port.PortalProbe.
-	Probe = probe.PortalFunc[domain.Env, domain.PortalInfo]
+	Probe = Func[domain.Env, domain.PortalInfo]
 
 	// node is the subset of D-Bus introspection XML this package needs: the
 	// list of interfaces exported by an object.

@@ -17,7 +17,7 @@ type (
 		CompositorType,
 		GraphicsType,
 		PortalType any,
-	] struct {
+	] = struct {
 		// OS operating system and kernel identity.
 		OS OSType `json:"os"`
 		// Session seat and login session details.
@@ -37,7 +37,7 @@ type (
 	}
 
 	// SessionInfo is the shared SessionInfo layout, parameterized by its component types.
-	SessionInfo[SessionType any] struct {
+	SessionInfo[SessionType any] = struct {
 		// ID identifier reported by the underlying system.
 		ID string `json:"id"`
 		// Seat logind seat identifier, such as seat0.
@@ -63,7 +63,7 @@ type (
 	}
 
 	// DisplayInfo is the shared DisplayInfo layout, parameterized by its component types.
-	DisplayInfo[XServerType, WaylandServerType, ProtocolType any] struct {
+	DisplayInfo[XServerType, WaylandServerType, ProtocolType any] = struct {
 		// X11 details of a reachable X server; nil when unavailable.
 		X11 *XServerType `json:"x11,omitempty"`
 		// Wayland details of a reachable Wayland compositor; nil when unavailable.
@@ -83,7 +83,7 @@ type (
 	}
 
 	// WaylandInfo is the shared WaylandInfo layout, parameterized by its component types.
-	WaylandInfo[GlobalType any] struct {
+	WaylandInfo[GlobalType any] = struct {
 		// Display wayland socket name used for the connection.
 		Display string `json:"display"`
 		// Globals global interfaces advertised by the Wayland registry.
@@ -93,7 +93,7 @@ type (
 	}
 
 	// Config is the shared Config layout, parameterized by its component types.
-	Config[SectionsType any] struct {
+	Config[SectionsType any] = struct {
 		// Sections selects the environment sections to detect.
 		Sections SectionsType
 		// Timeout bounds the entire detection run.
@@ -107,7 +107,7 @@ type (
 	}
 
 	// DesktopInfo is the shared DesktopInfo layout, parameterized by its component types.
-	DesktopInfo[DesktopType any] struct {
+	DesktopInfo[DesktopType any] = struct {
 		// Environment recognized desktop environment.
 		Environment DesktopType `json:"environment"`
 		// Name human-readable name reported by the source.
@@ -125,7 +125,7 @@ type (
 	}
 
 	// CompositorInfo is the shared CompositorInfo layout, parameterized by its component types.
-	CompositorInfo[KindType, ConfidenceType, MethodType any] struct {
+	CompositorInfo[KindType, ConfidenceType, MethodType any] = struct {
 		// Kind identifies the compositor or window manager.
 		Kind KindType `json:"kind"`
 		// Confidence expresses the certainty of the identification.
@@ -143,7 +143,7 @@ type (
 	}
 
 	// GraphicsInfo is the shared GraphicsInfo layout, parameterized by its component types.
-	GraphicsInfo[OpenGLType, VulkanType, GPUType any] struct {
+	GraphicsInfo[OpenGLType, VulkanType, GPUType any] = struct {
 		// OpenGL openGL implementation reported by drivers or manifests.
 		OpenGL OpenGLType `json:"opengl"`
 		// Vulkan vulkan loader and driver availability.

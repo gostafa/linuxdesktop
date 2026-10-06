@@ -8,6 +8,16 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/gostafa/linuxdesktop/internal/adapter/desktop"
+	"github.com/gostafa/linuxdesktop/internal/adapter/drm"
+	"github.com/gostafa/linuxdesktop/internal/adapter/env"
+	"github.com/gostafa/linuxdesktop/internal/adapter/gl"
+	"github.com/gostafa/linuxdesktop/internal/adapter/logind"
+	"github.com/gostafa/linuxdesktop/internal/adapter/osinfo"
+	"github.com/gostafa/linuxdesktop/internal/adapter/portal"
+	"github.com/gostafa/linuxdesktop/internal/adapter/wayland"
+	"github.com/gostafa/linuxdesktop/internal/adapter/x11"
+	"github.com/gostafa/linuxdesktop/internal/core"
 	"github.com/gostafa/linuxdesktop/internal/probe"
 )
 
@@ -40,21 +50,21 @@ func TestDelegates(t *testing.T) {
 		}
 		return 7, failure
 	}
-	env := 9
+	environment := 9
 	withEnv := func(got context.Context, value *int) (int, error) {
-		if value != &env {
+		if value != &environment {
 			t.Fatal("environment lost")
 		}
 		return plain(got)
 	}
 	checks := []func() (int, error){
-		func() (int, error) { return probe.OSFunc[int](plain).OS(ctx) },
-		func() (int, error) { return probe.DetectFunc[int](plain).Detect(ctx) },
-		func() (int, error) { return probe.SessionFunc[int, int](withEnv).Session(ctx, &env) },
-		func() (int, error) { return probe.DesktopFunc[int, int](withEnv).Desktop(ctx, &env) },
-		func() (int, error) { return probe.X11Func[int, int](withEnv).X11(ctx, &env) },
-		func() (int, error) { return probe.WaylandFunc[int, int](withEnv).Wayland(ctx, &env) },
-		func() (int, error) { return probe.PortalFunc[int, int](withEnv).Portal(ctx, &env) },
+		func() (int, error) { return osinfo.Func[int](plain).OS(ctx) },
+		func() (int, error) { return core.Func[int](plain).Detect(ctx) },
+		func() (int, error) { return logind.Func[int, int](withEnv).Session(ctx, &environment) },
+		func() (int, error) { return desktop.Func[int, int](withEnv).Desktop(ctx, &environment) },
+		func() (int, error) { return x11.Func[int, int](withEnv).X11(ctx, &environment) },
+		func() (int, error) { return wayland.Func[int, int](withEnv).Wayland(ctx, &environment) },
+		func() (int, error) { return portal.Func[int, int](withEnv).Portal(ctx, &environment) },
 	}
 	for _, check := range checks {
 		if got, err := check(); got != 7 || !errors.Is(err, failure) {
@@ -67,11 +77,11 @@ func TestDelegates(t *testing.T) {
 			t.Fatal("successful probe changed its result", got, err)
 		}
 	}
-	if got := probe.SnapshotFunc[int](func() int { return 7 }).Snapshot(); got != 7 {
+	if got := env.Func[int](func() int { return 7 }).Snapshot(); got != 7 {
 		t.Fatal(got)
 	}
 	failure = errors.New("paired failure")
-	gpu := probe.GPUFunc[int](
+	gpu := drm.Func[int](
 		func(context.Context) (int, string, error) { return 7, "primary", failure },
 	)
 	if got, primary, err := gpu.GPUs(
@@ -80,7 +90,7 @@ func TestDelegates(t *testing.T) {
 		!errors.Is(err, failure) {
 		t.Fatal(got, primary, err)
 	}
-	stack := probe.StackFunc[int, string](
+	stack := gl.Func[int, string](
 		func(context.Context) (int, string, error) { return 7, "vulkan", failure },
 	)
 	if got, version, err := stack.Stack(

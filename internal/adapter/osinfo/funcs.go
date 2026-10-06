@@ -5,6 +5,7 @@ package osinfo
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"runtime"
 
@@ -106,4 +107,14 @@ func architecture(arch string) string {
 	}
 
 	return arch
+}
+
+// OS delegates to the configured function.
+func (run Func[T]) OS(ctx context.Context) (T, error) {
+	result, err := run(ctx)
+	if err != nil {
+		return result, fmt.Errorf("probe: run: %w", err)
+	}
+
+	return result, nil
 }

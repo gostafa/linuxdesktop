@@ -16,7 +16,7 @@ import (
 )
 
 // New returns an X11 probe.
-func New() Probe { return x11 }
+func New() Probe { return detectX11 }
 
 // Available is a cheap test for an X server, doing no more than a stat. A
 // display on a remote host is reported as available without verification,
@@ -38,7 +38,7 @@ func Available(env *domain.Env) bool {
 // X11 connects to $DISPLAY and reports what the server says about itself. A
 // nil result with a nil error means there was no X server to talk to, which on
 // a pure Wayland or headless session is the expected outcome.
-func x11(ctx context.Context, env *domain.Env) (*domain.X11Info, error) {
+func detectX11(ctx context.Context, env *domain.Env) (*domain.X11Info, error) {
 	result, err := queryDisplay(ctx, env, xgb.NewConnDisplay)
 	if err != nil {
 		return nil, fmt.Errorf("x11: query display: %w", err)
@@ -299,4 +299,14 @@ func watchConnection(ctx context.Context, conn *xgb.Conn) chan struct{} {
 	go watch(ctx, conn, stop)
 
 	return stop
+}
+
+// X11 delegates to the configured function.
+func (run Func[E, T]) X11(ctx context.Context, env *E) (T, error) {
+	result, err := run(ctx, env)
+	if err != nil {
+		return result, fmt.Errorf("probe: run: %w", err)
+	}
+
+	return result, nil
 }

@@ -9,11 +9,13 @@ import (
 
 	"github.com/gostafa/linuxdesktop/internal/domain"
 	"github.com/gostafa/linuxdesktop/internal/port"
-	"github.com/gostafa/linuxdesktop/internal/probe"
 	"github.com/gostafa/linuxdesktop/internal/schema"
 )
 
 type (
+	// Func delegates the probe to its configured function.
+	Func[T any] func(ctx context.Context) (T, error)
+
 	// resultTarget binds a result's destination to its diagnostic label.
 	resultTarget[C, T any] struct {
 		value func(*C) *T
@@ -77,7 +79,7 @@ type (
 	}
 
 	// Engine runs a configured set of probes.
-	Engine = probe.DetectFunc[*domain.Environment]
+	Engine = Func[*domain.Environment]
 
 	// detector holds the immutable dependencies and configuration captured by Engine.
 	detector = executionState[Deps, Config]

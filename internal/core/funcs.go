@@ -509,3 +509,13 @@ func selectedStep(run probeFunc, section domain.Section, wired bool) step {
 func namedTarget[T any](value func(*collector) *T, name string) resultTarget[collector, T] {
 	return resultTarget[collector, T]{value: value, name: name}
 }
+
+// Detect delegates to the configured function.
+func (run Func[T]) Detect(ctx context.Context) (T, error) {
+	result, err := run(ctx)
+	if err != nil {
+		return result, fmt.Errorf("probe: run: %w", err)
+	}
+
+	return result, nil
+}

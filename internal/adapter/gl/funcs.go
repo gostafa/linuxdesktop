@@ -6,6 +6,7 @@ package gl
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -18,7 +19,7 @@ import (
 
 // New returns a graphics stack probe that reads installed manifests.
 func New() Probe {
-	return func(ctx context.Context) (domain.OpenGLInfo, domain.VulkanInfo, error) { return stack(ctx, "") }
+	return func(ctx context.Context) (domain.OpenGLInfo, domain.VulkanInfo, error) { return detectStack(ctx, "") }
 }
 
 // NewNative returns a stack probe that also queries native graphics drivers.
@@ -27,7 +28,10 @@ func NewNative() Probe {
 }
 
 // stack reports the OpenGL and Vulkan implementations from installed manifests.
-func stack(_ context.Context, files string) (domain.OpenGLInfo, domain.VulkanInfo, error) {
+func detectStack(
+	_ context.Context,
+	files string,
+) (glInfo domain.OpenGLInfo, vkInfo domain.VulkanInfo, failure error) {
 	opengl := openglFromManifests(files)
 	vulkan := vulkanFromManifests(files)
 
@@ -35,7 +39,10 @@ func stack(_ context.Context, files string) (domain.OpenGLInfo, domain.VulkanInf
 }
 
 // nativeStack augments the manifest result with details from live drivers.
-func nativeStack(_ context.Context, files string) (domain.OpenGLInfo, domain.VulkanInfo, error) {
+func nativeStack(
+	_ context.Context,
+	files string,
+) (glInfo domain.OpenGLInfo, vkInfo domain.VulkanInfo, failure error) {
 	opengl := openglFromManifests(files)
 	vulkan := vulkanFromManifests(files)
 
@@ -280,4 +287,14 @@ func part(fields []string, index int) int {
 	}
 
 	return number
+}
+
+// Stack delegates to the configured function.
+func (run Func[A, B]) Stack(ctx context.Context) (opengl A, vulkan B, err error) {
+	opengl, vulkan, err = run(ctx)
+	if err != nil {
+		return opengl, vulkan, fmt.Errorf("probe: stack: %w", err)
+	}
+
+	return opengl, vulkan, nil
 }

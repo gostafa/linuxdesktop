@@ -4,14 +4,23 @@
 package x11
 
 import (
+	"context"
+
 	"github.com/gostafa/linuxdesktop/internal/domain"
-	"github.com/gostafa/linuxdesktop/internal/probe"
 	"github.com/jezek/xgb/xproto"
 )
 
 type (
+	// Source is the contract consumed by the detection engine.
+	Source interface {
+		X11(ctx context.Context, env *domain.Env) (*domain.X11Info, error)
+	}
+
+	// Func delegates the probe to its configured function.
+	Func[E, T any] func(ctx context.Context, env *E) (T, error)
+
 	// Probe implements port.X11Probe. It is stateless.
-	Probe = probe.X11Func[domain.Env, *domain.X11Info]
+	Probe = Func[domain.Env, *domain.X11Info]
 
 	// atomCookies holds the three InternAtom requests while they are in flight.
 	atomCookies struct {

@@ -5,6 +5,7 @@ package desktop
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gostafa/linuxdesktop/internal/domain"
 	"github.com/gostafa/linuxdesktop/internal/port"
@@ -13,12 +14,14 @@ import (
 
 // New returns a desktop probe. bus may be nil to skip the version lookup.
 func New(bus port.Bus) Probe {
-	return func(ctx context.Context, env *domain.Env) (domain.DesktopInfo, error) { return desktop(ctx, env, bus) }
+	return func(ctx context.Context, env *domain.Env) (domain.DesktopInfo, error) {
+		return detectDesktop(ctx, env, bus)
+	}
 }
 
 // Desktop identifies the desktop environment and, where one is cheaply
 // available, its version.
-func desktop(ctx context.Context, env *domain.Env, bus port.Bus) (domain.DesktopInfo, error) {
+func detectDesktop(ctx context.Context, env *domain.Env, bus port.Bus) (domain.DesktopInfo, error) {
 	info := rules.Desktop(env)
 
 	info.Version = env.KDESessionVersion
@@ -65,4 +68,17 @@ func gnomeVersion(ctx context.Context, bus port.Bus) string {
 	}
 
 	return s
+}
+
+// Desktop delegates to the configured function.
+func (run Func[E, T]) Desktop(
+	ctx context.Context,
+	env *E,
+) (T, error) {
+	result, err := run(ctx, env)
+	if err != nil {
+		return result, fmt.Errorf("probe: run: %w", err)
+	}
+
+	return result, nil
 }

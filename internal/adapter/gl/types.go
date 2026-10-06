@@ -4,17 +4,21 @@
 package gl
 
 import (
+	"context"
+
 	"github.com/gostafa/linuxdesktop/internal/domain"
-	"github.com/gostafa/linuxdesktop/internal/probe"
 )
 
 type (
+	// Func delegates the probe to its configured function.
+	Func[A, B any] func(ctx context.Context) (A, B, error)
+
 	// Probe implements port.StackProbe.
 	//
 	// native selects the dlopen path, which asks the drivers directly at the
 	// cost of initializing them. When it is false the probe reads manifests
 	// only.
-	Probe = probe.StackFunc[domain.OpenGLInfo, domain.VulkanInfo]
+	Probe = Func[domain.OpenGLInfo, domain.VulkanInfo]
 
 	// icd is the driver entry a manifest describes: where the library lives
 	// and, for Vulkan, which API version it implements.

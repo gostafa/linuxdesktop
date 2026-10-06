@@ -26,7 +26,10 @@ func New() Probe {
 // GPUs enumerates the DRM cards and returns them along with the id of the
 // primary one, which is the card the firmware posted. A machine with no DRM
 // devices is not an error: that is what a headless server looks like.
-func gpus(_ context.Context, files string) ([]domain.GPUInfo, string, error) {
+func gpus(
+	_ context.Context,
+	files string,
+) (devices []domain.GPUInfo, primaryID string, failure error) {
 	entries, err := sysfs.DirNames(sysfs.Path(files, classDir))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, noValue, nil
@@ -384,4 +387,14 @@ func isCard(name string) bool {
 // trimHex converts a sysfs "0x8086" into the bare "8086" that pci.ids uses.
 func trimHex(raw string) string {
 	return strings.TrimPrefix(raw, "0x")
+}
+
+// GPUs delegates to the configured function.
+func (run Func[T]) GPUs(ctx context.Context) (result T, primary string, err error) {
+	result, primary, err = run(ctx)
+	if err != nil {
+		return result, primary, fmt.Errorf("probe: GPUs: %w", err)
+	}
+
+	return result, primary, nil
 }

@@ -4,12 +4,16 @@
 package desktop
 
 import (
+	"context"
+
 	"github.com/gostafa/linuxdesktop/internal/domain"
-	"github.com/gostafa/linuxdesktop/internal/probe"
 )
 
 type (
+	// Func delegates the probe to its configured function.
+	Func[E, T any] func(ctx context.Context, env *E) (T, error)
+
 	// Probe implements port.DesktopProbe. bus may be nil, which simply leaves the
 	// GNOME version unset.
-	Probe = probe.DesktopFunc[domain.Env, domain.DesktopInfo]
+	Probe = Func[domain.Env, domain.DesktopInfo]
 )

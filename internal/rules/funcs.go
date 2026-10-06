@@ -59,13 +59,13 @@ func Protocol(
 ) domain.DisplayProtocol {
 	switch {
 	case waylandAvailable:
-		return domain.DisplayProtocol(domain.SessionTypeWayland)
+		return domain.SessionTypeWayland
 	case x11Available:
-		return domain.DisplayProtocol(domain.SessionTypeX11)
+		return domain.SessionTypeX11
 	case sessionType == domain.SessionTypeWayland:
-		return domain.DisplayProtocol(domain.SessionTypeWayland)
+		return domain.SessionTypeWayland
 	case sessionType == domain.SessionTypeX11:
-		return domain.DisplayProtocol(domain.SessionTypeX11)
+		return domain.SessionTypeX11
 	}
 
 	return domain.Unknown

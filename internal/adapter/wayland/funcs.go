@@ -20,7 +20,7 @@ import (
 )
 
 // New returns a Wayland probe.
-func New() Probe { return wayland }
+func New() Probe { return detectWayland }
 
 // SocketPath resolves the compositor socket, returning "" when there is none.
 // It only reports a path that is actually a socket, so callers can use it as a
@@ -51,7 +51,7 @@ func Has(globals []domain.WaylandGlobal, iface string) bool {
 
 // Wayland connects to the compositor and enumerates its global registry. A nil
 // result with a nil error means there was no compositor to talk to.
-func wayland(ctx context.Context, env *domain.Env) (*domain.WaylandInfo, error) {
+func detectWayland(ctx context.Context, env *domain.Env) (*domain.WaylandInfo, error) {
 	path := SocketPath(env)
 	if path == noValue {
 		return inherited(env), nil
@@ -527,4 +527,17 @@ func registryError(err error) error {
 	}
 
 	return nil
+}
+
+// Wayland delegates to the configured function.
+func (run Func[E, T]) Wayland(
+	ctx context.Context,
+	env *E,
+) (T, error) {
+	result, err := run(ctx, env)
+	if err != nil {
+		return result, fmt.Errorf("probe: run: %w", err)
+	}
+
+	return result, nil
 }

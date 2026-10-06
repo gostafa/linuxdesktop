@@ -12,7 +12,7 @@ type (
 	envFingerprint = environmentFingerprint[domain.Env, match]
 
 	// environmentFingerprint describes evidence supplied by an environment snapshot.
-	environmentFingerprint[E, M any] struct {
+	environmentFingerprint[E, M any] = struct {
 		value func(*E) string
 		match M
 	}
@@ -22,7 +22,7 @@ type (
 	match = identity[domain.CompositorKind]
 
 	// identity associates a classification key with the observed name.
-	identity[K any] struct {
+	identity[K any] = struct {
 		kind K
 		name string
 	}
@@ -32,7 +32,7 @@ type (
 	fingerprint = interfaceFingerprint[match]
 
 	// interfaceFingerprint maps a protocol interface to an identified implementation.
-	interfaceFingerprint[M any] struct {
+	interfaceFingerprint[M any] = struct {
 		match M
 		iface string
 	}
@@ -42,7 +42,7 @@ type (
 	verdict = classified[match, domain.DetectionConfidence, domain.DetectionMethod]
 
 	// classified combines an identity with its confidence and evidence source.
-	classified[M, C, D any] struct {
+	classified[M, C, D any] = struct {
 		match M
 
 		confidence C
@@ -50,5 +50,5 @@ type (
 	}
 
 	// rung is one step of the compositor detection ladder.
-	rung func(*domain.Signals) (verdict, bool)
+	rung = func(*domain.Signals) (verdict, bool)
 )

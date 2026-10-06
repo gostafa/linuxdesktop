@@ -353,3 +353,13 @@ func parseInterfaces(raw string) (node, error) {
 
 	return root, nil
 }
+
+// Portal delegates to the configured function.
+func (run Func[E, T]) Portal(ctx context.Context, env *E) (T, error) {
+	result, err := run(ctx, env)
+	if err != nil {
+		return result, fmt.Errorf("probe: run: %w", err)
+	}
+
+	return result, nil
+}

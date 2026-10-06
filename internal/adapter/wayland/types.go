@@ -4,11 +4,20 @@
 package wayland
 
 import (
+	"context"
+
 	"github.com/gostafa/linuxdesktop/internal/domain"
-	"github.com/gostafa/linuxdesktop/internal/probe"
 )
 
 type (
+	// Source is the contract consumed by the detection engine.
+	Source interface {
+		Wayland(ctx context.Context, env *domain.Env) (*domain.WaylandInfo, error)
+	}
+
+	// Func delegates the probe to its configured function.
+	Func[E, T any] func(ctx context.Context, env *E) (T, error)
+
 	// wireEvent is one decoded protocol message.
 	wireEvent struct {
 		body   []byte
@@ -17,7 +26,7 @@ type (
 	}
 
 	// Probe implements port.WaylandProbe. It is stateless.
-	Probe = probe.WaylandFunc[domain.Env, *domain.WaylandInfo]
+	Probe = Func[domain.Env, *domain.WaylandInfo]
 
 	// registry accumulates the compositor's global listing across however many
 	// reads it takes to receive it.

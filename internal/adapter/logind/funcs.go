@@ -368,3 +368,16 @@ func structID(value any) string {
 func truthy(raw string) bool {
 	return raw == "1" || strings.EqualFold(raw, "yes") || strings.EqualFold(raw, "true")
 }
+
+// Session delegates to the configured function.
+func (run Func[E, T]) Session(
+	ctx context.Context,
+	env *E,
+) (T, error) {
+	result, err := run(ctx, env)
+	if err != nil {
+		return result, fmt.Errorf("probe: run: %w", err)
+	}
+
+	return result, nil
+}

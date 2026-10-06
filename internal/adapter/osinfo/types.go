@@ -4,13 +4,22 @@
 package osinfo
 
 import (
+	"context"
+
 	"github.com/gostafa/linuxdesktop/internal/domain"
-	"github.com/gostafa/linuxdesktop/internal/probe"
 )
 
 type (
+	// Source is the contract consumed by the detection engine.
+	Source interface {
+		OS(ctx context.Context) (domain.OSInfo, error)
+	}
+
+	// Func delegates the probe to its configured function.
+	Func[T any] func(ctx context.Context) (T, error)
+
 	// Probe implements port.OSProbe. It is stateless.
-	Probe = probe.OSFunc[domain.OSInfo]
+	Probe = Func[domain.OSInfo]
 
 	// releaseSetter fills one field of an OSInfo from one os-release value.
 	releaseSetter func(*domain.OSInfo, string)
