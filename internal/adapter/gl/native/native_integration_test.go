@@ -6,8 +6,9 @@
 package native_test
 
 import (
-	"github.com/gostafa/linuxdesktop/internal/adapter/gl/native"
 	"testing"
+
+	"github.com/gostafa/linuxdesktop/internal/adapter/gl/native"
 )
 
 func TestUnsupportedPlatform(t *testing.T) {

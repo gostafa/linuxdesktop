@@ -52,7 +52,9 @@ func TestDelegates(t *testing.T) {
 		t.Fatal(got)
 	}
 	failure = errors.New("paired failure")
-	gpu := probe.GPUFunc[int](func(context.Context) (int, string, error) { return 7, "primary", failure })
+	gpu := probe.GPUFunc[int](
+		func(context.Context) (int, string, error) { return 7, "primary", failure },
+	)
 	if got, primary, err := gpu.GPUs(
 		ctx,
 	); got != 7 || primary != "primary" ||

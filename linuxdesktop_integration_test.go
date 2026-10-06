@@ -35,8 +35,13 @@ func TestPublicAPIUsage(t *testing.T) {
 		t.Fatal("public result has the wrong package identity")
 	}
 	opts := []linuxdesktop.Option{
-		linuxdesktop.WithTimeout(time.Second), linuxdesktop.WithProbeTimeout(time.Millisecond),
-		linuxdesktop.WithSections(sections), linuxdesktop.WithOpenGL(), linuxdesktop.WithProcessScan(),
+		linuxdesktop.WithTimeout(time.Second),
+		linuxdesktop.WithProbeTimeout(time.Millisecond),
+		linuxdesktop.WithSections(
+			sections,
+		),
+		linuxdesktop.WithOpenGL(),
+		linuxdesktop.WithProcessScan(),
 		func(c *linuxdesktop.Config) { c.Sections = linuxdesktop.SectionOS },
 	}
 	var cfg linuxdesktop.Config
@@ -183,7 +188,10 @@ func TestNonLinuxDetection(t *testing.T) {
 
 func TestPublicNilContextAndOS(t *testing.T) {
 	t.Parallel()
-	result, err := linuxdesktop.DetectContext(nil, linuxdesktop.WithSections(linuxdesktop.SectionOS))
+	result, err := linuxdesktop.DetectContext(
+		nil,
+		linuxdesktop.WithSections(linuxdesktop.SectionOS),
+	)
 	if result == nil || (runtime.GOOS != "linux" && !errors.Is(err, linuxdesktop.ErrNotLinux)) {
 		t.Fatal(result, err)
 	}
