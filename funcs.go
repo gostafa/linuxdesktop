@@ -190,31 +190,30 @@ func publicGPUs(source []domain.GPUInfo) []GPUInfo {
 // The returned *Environment is never nil. The error reports probes that did
 // not succeed and is safe to ignore; see the package documentation.
 func Detect() (*Environment, error) {
-	result, callErr := DetectContext(context.Background())
-	if callErr != nil {
-		return result, fmt.Errorf("linuxdesktop: detect environment: %w", callErr)
-	}
+	result, err := DetectContext(context.Background())
 
-	return result, nil
+	return detectionValues[*Environment](result, err, "environment")
 }
 
 // DetectContext reports the desktop environment, honoring ctx and opts.
-func DetectContext(ctx context.Context, opts ...Option) (*Environment, error) {
+//
+//nolint:contextcheck // Nil context selects the background context.
+func DetectContext(
+	ctx context.Context,
+	opts ...Option,
+) (*Environment, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	result, err := detectOn(ctx, newConfig(opts...), runtime.GOOS)
-	if err != nil {
-		return result, fmt.Errorf("linuxdesktop: detect context: %w", err)
-	}
 
-	return result, nil
+	return detectionValues[*Environment](result, err, "context")
 }
 
 func detectOn(ctx context.Context, cfg *core.Config, goos string) (out *Environment, err error) {
 	if goos != goosLinux {
-		return elsewhere(), ErrNotLinux
+		return detectionValues[*Environment](elsewhere(), ErrNotLinux, "platform")
 	}
 
 	bus := dbusconn.New(ctx)
@@ -225,7 +224,7 @@ func detectOn(ctx context.Context, cfg *core.Config, goos string) (out *Environm
 
 	result, err := core.New(&deps, cfg).Detect(ctx)
 
-	return publicEnvironment(result), err
+	return detectionValues[*Environment](publicEnvironment(result), err, "probes")
 }
 
 // elsewhere is the answer on a system that has no Linux desktop to describe: a
@@ -245,53 +244,38 @@ func elsewhere() *Environment {
 // OS reports the distribution and kernel identity.
 func OS() (OSInfo, error) {
 	e, err := section(SectionOS)
-	if err != nil {
-		return e.OS, fmt.Errorf("linuxdesktop: detect operating system: %w", err)
-	}
 
-	return e.OS, nil
+	return e.OS, errors.Join(detectionError(err, "operating system"))
 }
 
 // Session reports the logind seat session.
 func Session() (SessionInfo, error) {
 	e, err := section(SectionSession)
-	if err != nil {
-		return e.Session, fmt.Errorf("linuxdesktop: detect session: %w", err)
-	}
 
-	return e.Session, nil
+	return e.Session, errors.Join(detectionError(err, "session"))
 }
 
 // Display reports which display servers are reachable, connecting to each one
 // that is.
 func Display() (DisplayInfo, error) {
 	e, err := section(SectionDisplay)
-	if err != nil {
-		return e.Display, fmt.Errorf("linuxdesktop: detect display: %w", err)
-	}
 
-	return e.Display, nil
+	return e.Display, errors.Join(detectionError(err, "display"))
 }
 
 // Desktop reports the desktop environment.
 func Desktop() (DesktopInfo, error) {
 	e, err := section(SectionDesktop)
-	if err != nil {
-		return e.Desktop, fmt.Errorf("linuxdesktop: detect desktop: %w", err)
-	}
 
-	return e.Desktop, nil
+	return e.Desktop, errors.Join(detectionError(err, "desktop"))
 }
 
 // Compositor reports the compositor or window manager, together with the
 // method that identified it and how far that method can be trusted.
 func Compositor() (CompositorInfo, error) {
 	e, err := section(SectionCompositor)
-	if err != nil {
-		return e.Compositor, fmt.Errorf("linuxdesktop: detect compositor: %w", err)
-	}
 
-	return e.Compositor, nil
+	return e.Compositor, errors.Join(detectionError(err, "compositor"))
 }
 
 // Graphics reports the GPUs and the client-side graphics stack. It uses the
@@ -299,21 +283,15 @@ func Compositor() (CompositorInfo, error) {
 // with WithOpenGL.
 func Graphics() (GraphicsInfo, error) {
 	e, err := section(SectionGraphics)
-	if err != nil {
-		return e.Graphics, fmt.Errorf("linuxdesktop: detect graphics: %w", err)
-	}
 
-	return e.Graphics, nil
+	return e.Graphics, errors.Join(detectionError(err, "graphics"))
 }
 
 // Portal reports whether xdg-desktop-portal is running and what it offers.
 func Portal() (PortalInfo, error) {
 	e, err := section(SectionPortal)
-	if err != nil {
-		return e.Portal, fmt.Errorf("linuxdesktop: detect portal: %w", err)
-	}
 
-	return e.Portal, nil
+	return e.Portal, errors.Join(detectionError(err, "portal"))
 }
 
 // IsWayland reports whether a Wayland compositor socket is present. It stats a
@@ -365,12 +343,23 @@ func WithProcessScan() Option { return func(c *Config) { c.ProcessScan = true } 
 
 // section runs a detection limited to one part of the Environment.
 func section(s Section) (*Environment, error) {
-	result, callErr := DetectContext(context.Background(), WithSections(s))
-	if callErr != nil {
-		return result, fmt.Errorf("linuxdesktop: detect section: %w", callErr)
+	result, err := DetectContext(context.Background(), WithSections(s))
+
+	return detectionValues[*Environment](result, err, "section")
+}
+
+// detectionValues preserves partial probe data while adding error context.
+func detectionValues[T any](value T, err error, operation string) (T, error) {
+	return value, errors.Join(detectionError(err, operation))
+}
+
+// detectionError adds the operation name while preserving successful nil errors.
+func detectionError(err error, operation string) error {
+	if err != nil {
+		return fmt.Errorf("linuxdesktop: detect %s: %w", operation, err)
 	}
 
-	return result, nil
+	return nil
 }
 
 // adapters is the composition root: the one place that decides which

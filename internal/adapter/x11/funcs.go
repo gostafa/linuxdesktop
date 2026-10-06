@@ -53,13 +53,20 @@ func queryDisplay(
 	connect func(string) (*xgb.Conn, error),
 ) (*domain.X11Info, error) {
 	if env.Display == noValue {
-		return nil, nil
+		var absent *domain.X11Info
+
+		return absent, nil
 	}
 
 	conn, err := connect(env.Display)
 	if err != nil {
 		return nil, fmt.Errorf("x11: connect display: %w", err)
 	}
+
+	return queryConnection(ctx, conn, env.Display), nil
+}
+
+func queryConnection(ctx context.Context, conn *xgb.Conn, display string) *domain.X11Info {
 	defer conn.Close()
 
 	// xgb's Reply blocks indefinitely, so cancellation is expressed by closing
@@ -67,7 +74,7 @@ func queryDisplay(
 	stop := watchConnection(ctx, conn)
 	defer close(stop)
 
-	return describe(conn, env.Display), nil
+	return describe(conn, display)
 }
 
 // resolve reads the three atoms back off the wire. Any the server does not know

@@ -15,7 +15,7 @@ import (
 // New returns a Bus whose connections live no longer than base.
 func New(base context.Context) *Bus {
 	if base == nil {
-		base = context.Background()
+		base = context.Background() //nolint:contextcheck // Nil context permits an unbounded connection lifetime.
 	}
 
 	cache := new(connections[port.BusKind, *dbus.Conn])
@@ -98,6 +98,8 @@ func readIntrospection[C connection, O interface {
 }
 
 // Property reads a single property off an interface.
+//
+//nolint:ireturn // D-Bus properties have heterogeneous values required by the Bus port.
 func (bus *connectionBus[K, C, O, Q]) Property(
 	ctx context.Context,
 	kind K,

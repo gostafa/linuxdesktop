@@ -34,12 +34,16 @@ const (
 	SessionTypeMir     SessionType = "mir"
 
 	// DisplayProtocolUnknown indicates an unidentified display protocol.
-	DisplayProtocolUnknown DisplayProtocol = "unknown"
-	DisplayProtocolWayland DisplayProtocol = "wayland"
-	DisplayProtocolX11     DisplayProtocol = "x11"
+	//nolint:goconst // Distinct enum types intentionally share their wire values.
+	DisplayProtocolUnknown DisplayProtocol = DisplayProtocol(SessionTypeUnknown)
+	//nolint:goconst // Distinct enum types intentionally share their wire values.
+	DisplayProtocolWayland DisplayProtocol = DisplayProtocol(SessionTypeWayland)
+	//nolint:goconst // Distinct enum types intentionally share their wire values.
+	DisplayProtocolX11 DisplayProtocol = DisplayProtocol(SessionTypeX11)
 
 	// DesktopUnknown indicates an unidentified desktop environment.
-	DesktopUnknown  DesktopEnvironment = "unknown"
+	//nolint:goconst // Distinct enum types intentionally share their wire values.
+	DesktopUnknown  DesktopEnvironment = DesktopEnvironment(SessionTypeUnknown)
 	DesktopGNOME    DesktopEnvironment = "gnome"
 	DesktopKDE      DesktopEnvironment = "kde"
 	DesktopXFCE     DesktopEnvironment = "xfce"
@@ -54,7 +58,8 @@ const (
 	// CompositorUnknown indicates an unrecognized compositor or window manager.
 	// Its raw name is preserved in
 	// CompositorInfo.Name, so no information is lost.
-	CompositorUnknown  CompositorKind = "unknown"
+	//nolint:goconst // Distinct enum types intentionally share their wire values.
+	CompositorUnknown  CompositorKind = CompositorKind(SessionTypeUnknown)
 	CompositorMutter   CompositorKind = "mutter"
 	CompositorKWin     CompositorKind = "kwin"
 	CompositorSway     CompositorKind = "sway"
@@ -70,14 +75,16 @@ const (
 	CompositorAwesome  CompositorKind = "awesome"
 
 	// ConfidenceUnknown indicates that detection confidence is unavailable.
-	ConfidenceUnknown DetectionConfidence = "unknown"
+	//nolint:goconst // Distinct enum types intentionally share their wire values.
+	ConfidenceUnknown DetectionConfidence = DetectionConfidence(SessionTypeUnknown)
 	ConfidenceLow     DetectionConfidence = "low"
 	ConfidenceMedium  DetectionConfidence = "medium"
 	ConfidenceHigh    DetectionConfidence = "high"
 
 	// DetectedUnknown indicates an unidentified detection method. The methods
 	// are roughly ordered from cheapest to most invasive.
-	DetectedUnknown     DetectionMethod = "unknown"
+	//nolint:goconst // Distinct enum types intentionally share their wire values.
+	DetectedUnknown     DetectionMethod = DetectionMethod(SessionTypeUnknown)
 	DetectedEnvironment DetectionMethod = "environment"
 	DetectedLogind      DetectionMethod = "logind"
 	DetectedDBus        DetectionMethod = "dbus"

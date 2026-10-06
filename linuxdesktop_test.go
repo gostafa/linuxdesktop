@@ -94,6 +94,18 @@ func TestConfig(t *testing.T) {
 	}
 }
 
+func TestDetectionError(t *testing.T) {
+	t.Parallel()
+	if err := detectionError(nil, "context"); err != nil {
+		t.Fatalf("successful detection acquired an error: %v", err)
+	}
+	failure := errors.New("probe failed")
+	err := detectionError(failure, "context")
+	if !errors.Is(err, failure) || err.Error() != "linuxdesktop: detect context: probe failed" {
+		t.Fatalf("probe error identity or operation lost: %v", err)
+	}
+}
+
 // Populate every field so an omitted conversion cannot hide behind a zero value.
 func populate(v reflect.Value) {
 	switch v.Kind() {

@@ -68,6 +68,8 @@ func WithProcessScan() Option {
 // Detect runs the probes and merges their answers. The returned Environment is
 // never nil; the error reports non-fatal probe failures and can be ignored by
 // callers that only want the data.
+//
+//nolint:contextcheck,nilnil // Accept nil context and preserve partial probe results.
 func detect(ctx context.Context, eng *detector) (*domain.Environment, error) {
 	if ctx == nil {
 		ctx = context.Background()

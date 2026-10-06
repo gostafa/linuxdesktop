@@ -67,7 +67,10 @@ func IsSocket(path string) bool {
 // DirNames lists the entry names of a directory. It uses Readdirnames so the
 // kernel is never asked to stat entries the caller may not care about.
 func DirNames(path string) ([]string, error) {
-	dir, err := os.Open(path)
+	//nolint:gosec // Internal adapters supply system paths or explicitly configured fixture roots.
+	dir, err := os.Open(
+		path,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("sysfs: open directory: %w", err)
 	}
@@ -139,7 +142,10 @@ func take() *[]byte {
 // readInto fills *buf with the contents of path and reports how many bytes it
 // holds.
 func readInto(path string, buf *[]byte) (int, error) {
-	file, err := os.Open(path)
+	//nolint:gosec // Internal adapters supply system paths or explicitly configured fixture roots.
+	file, err := os.Open(
+		path,
+	)
 	if err != nil {
 		return zero, fmt.Errorf("sysfs: open file: %w", err)
 	}
