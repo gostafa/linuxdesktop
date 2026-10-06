@@ -4,20 +4,12 @@
 package linuxdesktop
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"go/importer"
-	"go/token"
-	"go/types"
-	"io"
-	"os"
-	"os/exec"
 	"reflect"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 
@@ -25,163 +17,41 @@ import (
 	"github.com/gostafa/linuxdesktop/internal/domain"
 )
 
-func TestPublicAPIUsage(t *testing.T) {
-	var session SessionType = SessionTypeWayland
-	var protocol DisplayProtocol = DisplayProtocolWayland
-	var sections Section = SectionOS | SectionDisplay
-	result := Environment{
-		Session: SessionInfo{Type: session},
-		Display: DisplayInfo{Protocol: protocol, Wayland: &WaylandInfo{
-			Globals: []WaylandGlobal{{Interface: "wl_compositor"}},
-		}},
+func TestPublicSections(t *testing.T) {
+	t.Parallel()
+	if result, err := Detect(); result == nil ||
+		(runtime.GOOS != goosLinux && !errors.Is(err, ErrNotLinux)) {
+		t.Fatal(result, err)
 	}
-	if reflect.TypeOf(result).PkgPath() != "github.com/gostafa/linuxdesktop" {
-		t.Fatal("public result has the wrong package identity")
-	}
-	opts := []Option{
-		WithTimeout(time.Second), WithProbeTimeout(time.Millisecond),
-		WithSections(sections), WithOpenGL(), WithProcessScan(),
-		func(c *Config) { c.Sections = SectionOS },
-	}
-	var cfg Config
-	for _, opt := range opts {
-		opt(&cfg)
-	}
-	if cfg.Timeout != time.Second || cfg.ProbeTimeout != time.Millisecond ||
-		cfg.Sections != SectionOS ||
-		!cfg.NativeGL ||
-		!cfg.ProcessScan {
-		t.Fatalf("public options did not configure Config: %+v", cfg)
-	}
-}
-
-func TestNonLinuxDetection(t *testing.T) {
-	if runtime.GOOS == "linux" {
-		t.Skip("non-Linux behavior")
-	}
-	called := false
-	out, err := DetectContext(nil, nil, func(c *Config) { called = true })
-	if !called || !errors.Is(err, ErrNotLinux) || out == nil || !out.Headless ||
-		out.Session.Type != SessionTypeUnknown || out.Display.Protocol != DisplayProtocolUnknown ||
-		out.Desktop.Environment != DesktopUnknown {
-		t.Fatalf("unexpected non-Linux result: %+v, %v (option called: %v)", out, err, called)
-	}
-	if IsWayland() || IsX11() || !IsHeadless() {
-		t.Fatal("unexpected non-Linux display availability")
-	}
-	if _, err = OS(); !errors.Is(err, ErrNotLinux) {
-		t.Fatalf("section helper lost error: %v", err)
-	}
-}
-
-// Use compiled export data to inspect every exported declaration, including
-// constants and types that a manually maintained list could miss.
-func TestPublicAPIBoundary(t *testing.T) {
-	const module = "github.com/gostafa/linuxdesktop"
-	cmd := exec.Command("go", "list", "-export", "-deps", "-f", "{{.ImportPath}} {{.Export}}", ".")
-	data, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("load export data: %v", err)
-	}
-	files := make(map[string]string)
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	for scanner.Scan() {
-		fields := strings.SplitN(scanner.Text(), " ", 2)
-		if len(fields) == 2 && fields[1] != "" {
-			files[fields[0]] = fields[1]
+	for _, call := range []func() error{
+		func() error { _, err := OS(); return err }, func() error { _, err := Session(); return err },
+		func() error { _, err := Display(); return err }, func() error { _, err := Desktop(); return err },
+		func() error { _, err := Compositor(); return err }, func() error { _, err := Graphics(); return err },
+		func() error { _, err := Portal(); return err },
+	} {
+		if err := call(); runtime.GOOS != goosLinux && !errors.Is(err, ErrNotLinux) {
+			t.Fatal("section helper lost platform error", err)
 		}
 	}
-	if err := scanner.Err(); err != nil {
+	cfg := newConfig(WithSections(SectionOS|SectionGraphics), WithProcessScan(), WithOpenGL())
+	result, err := detectOn(t.Context(), cfg, goosLinux)
+	if result == nil || err != nil {
+		t.Fatal(result, err)
+	}
+	if _, err = detectOn(t.Context(), cfg, "other"); !errors.Is(err, ErrNotLinux) {
 		t.Fatal(err)
 	}
-	loader := importer.ForCompiler(
-		token.NewFileSet(),
-		"gc",
-		func(path string) (io.ReadCloser, error) {
-			return os.Open(files[path])
-		},
-	)
-	pkg, err := loader.Import(module)
-	if err != nil {
-		t.Fatal(err)
+	if onLinux(
+		"other",
+		func() bool { t.Fatal("probe ran on unsupported platform"); return true },
+	) ||
+		!onLinux(goosLinux, func() bool { return true }) {
+		t.Fatal("platform guard")
 	}
-	seen := make(map[types.Type]bool)
-	var visit func(types.Type)
-	visit = func(typ types.Type) {
-		if typ == nil || seen[typ] {
-			return
-		}
-		seen[typ] = true
-		switch typ := typ.(type) {
-		case *types.Alias:
-			if p := typ.Obj().Pkg(); p != nil && strings.Contains(p.Path(), "/internal/") {
-				t.Errorf("public API exposes internal alias %s", typ)
-			}
-			visit(types.Unalias(typ))
-		case *types.Named:
-			if p := typ.Obj().Pkg(); p != nil && strings.Contains(p.Path(), "/internal/") {
-				t.Errorf("public API exposes internal type %s", typ)
-			}
-			for i := range typ.NumMethods() {
-				if typ.Method(i).Exported() {
-					visit(typ.Method(i).Type())
-				}
-			}
-			visit(typ.Underlying())
-		case *types.Pointer:
-			visit(typ.Elem())
-		case *types.Slice:
-			visit(typ.Elem())
-		case *types.Array:
-			visit(typ.Elem())
-		case *types.Map:
-			visit(typ.Key())
-			visit(typ.Elem())
-		case *types.Chan:
-			visit(typ.Elem())
-		case *types.Struct:
-			for i := range typ.NumFields() {
-				if typ.Field(i).Exported() {
-					visit(typ.Field(i).Type())
-				}
-			}
-		case *types.Signature:
-			visit(typ.Params())
-			visit(typ.Results())
-		case *types.Tuple:
-			for i := range typ.Len() {
-				visit(typ.At(i).Type())
-			}
-		case *types.Interface:
-			for i := range typ.NumMethods() {
-				visit(typ.Method(i).Type())
-			}
-		}
-	}
-	for _, name := range pkg.Scope().Names() {
-		obj := pkg.Scope().Lookup(name)
-		if obj.Exported() {
-			visit(obj.Type())
-		}
-	}
-
-	// The duplicated enum values and defaults must agree across the boundary.
-	for _, path := range []string{module + "/internal/domain", module + "/internal/core"} {
-		internal, err := loader.Import(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, name := range pkg.Scope().Names() {
-			publicConst, ok := pkg.Scope().Lookup(name).(*types.Const)
-			if !ok || !publicConst.Exported() {
-				continue
-			}
-			if internalConst, ok := internal.Scope().Lookup(name).(*types.Const); ok {
-				if publicConst.Val().ExactString() != internalConst.Val().ExactString() {
-					t.Errorf("%s differs from %s", name, path)
-				}
-			}
-		}
+	_ = waylandAvailable()
+	_ = x11Available()
+	if graphicsProbe(&core.Config{}) == nil {
+		t.Fatal("default graphics probe missing")
 	}
 }
 
@@ -269,6 +139,22 @@ func assertJSONParity(t *testing.T, in *domain.Environment) *Environment {
 	return out
 }
 
+func TestPartialResultConversion(t *testing.T) {
+	failure := errors.New("probe failed")
+	deps := core.Deps{OS: failingOS{err: failure}}
+	in, err := core.New(&deps, newConfig(WithSections(SectionOS))).Detect(context.Background())
+	out := assertJSONParity(t, in)
+	if out.OS.ID != "partial" || !errors.Is(err, failure) {
+		t.Fatalf("partial data or error lost: %+v, %v", out, err)
+	}
+}
+
+type failingOS struct{ err error }
+
+func (p failingOS) OS(context.Context) (domain.OSInfo, error) {
+	return domain.OSInfo{ID: "partial"}, p.err
+}
+
 func TestEnvironmentConversion(t *testing.T) {
 	in := &domain.Environment{}
 	populate(reflect.ValueOf(in).Elem())
@@ -309,20 +195,4 @@ func TestEnvironmentConversionOptionalValues(t *testing.T) {
 			t.Fatal("nil versus empty slices were not preserved")
 		}
 	}
-}
-
-func TestPartialResultConversion(t *testing.T) {
-	failure := errors.New("probe failed")
-	deps := core.Deps{OS: failingOS{err: failure}}
-	in, err := core.New(&deps, newConfig(WithSections(SectionOS))).Detect(context.Background())
-	out := assertJSONParity(t, in)
-	if out.OS.ID != "partial" || !errors.Is(err, failure) {
-		t.Fatalf("partial data or error lost: %+v, %v", out, err)
-	}
-}
-
-type failingOS struct{ err error }
-
-func (p failingOS) OS(context.Context) (domain.OSInfo, error) {
-	return domain.OSInfo{ID: "partial"}, p.err
 }

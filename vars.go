@@ -6,18 +6,37 @@ package linuxdesktop
 import (
 	"errors"
 	"time"
-)
 
-const (
-	// DefaultTimeout bounds a whole detection run and
-	// DefaultProbeTimeout bounds each probe within it, so one unresponsive server
-	// cannot consume the entire budget.
-	DefaultTimeout = 2 * time.Second
-	// DefaultProbeTimeout bounds each individual detection probe.
-	DefaultProbeTimeout = 500 * time.Millisecond
+	"github.com/gostafa/linuxdesktop/internal/adapter/dbusconn"
+	"github.com/gostafa/linuxdesktop/internal/adapter/desktop"
+	"github.com/gostafa/linuxdesktop/internal/adapter/drm"
+	"github.com/gostafa/linuxdesktop/internal/adapter/env"
+	"github.com/gostafa/linuxdesktop/internal/adapter/gl"
+	"github.com/gostafa/linuxdesktop/internal/adapter/logind"
+	"github.com/gostafa/linuxdesktop/internal/adapter/osinfo"
+	"github.com/gostafa/linuxdesktop/internal/adapter/portal"
+	"github.com/gostafa/linuxdesktop/internal/adapter/procscan"
+	"github.com/gostafa/linuxdesktop/internal/adapter/wayland"
+	"github.com/gostafa/linuxdesktop/internal/adapter/x11"
+	"github.com/gostafa/linuxdesktop/internal/port"
 )
 
 var (
+	// Compile-time proof that every adapter still satisfies the port it is wired
+	// to. These cost nothing at runtime and catch a broken signature at build time
+	// rather than at the injection site.
+	_ port.EnvProbe     = env.Probe(nil)
+	_ port.OSProbe      = osinfo.Probe(nil)
+	_ port.SessionProbe = logind.Probe(nil)
+	_ port.X11Probe     = x11.Probe(nil)
+	_ port.WaylandProbe = wayland.Probe(nil)
+	_ port.DesktopProbe = desktop.Probe(nil)
+	_ port.GPUProbe     = drm.Probe(nil)
+	_ port.StackProbe   = gl.Probe(nil)
+	_ port.PortalProbe  = portal.Probe(nil)
+	_ port.ProcessProbe = (*procscan.Probe)(nil)
+	_ port.Bus          = (*dbusconn.Bus)(nil)
+
 	// ErrNotLinux is joined into the error from Detect when the program is not
 	// running on Linux. The returned Environment is still valid: it is zero-valued
 	// and marked headless, so a cross-platform caller can import this package

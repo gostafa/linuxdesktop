@@ -12,19 +12,6 @@ import (
 	"testing"
 )
 
-func process(t *testing.T, root, pid, comm, uid string) {
-	t.Helper()
-	dir := filepath.Join(root, pid)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	for name, data := range map[string]string{commFile: comm, statusFile: "Name: test\nUid:\t" + uid + " 0 0 0\n"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
 func TestProcesses(t *testing.T) {
 	t.Parallel()
 	probe := New(nil)
@@ -54,6 +41,19 @@ func TestProcesses(t *testing.T) {
 	}
 }
 
+func process(t *testing.T, root, pid, comm, uid string) {
+	t.Helper()
+	dir := filepath.Join(root, pid)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{commFile: comm, statusFile: "Name: test\nUid:\t" + uid + " 0 0 0\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestWalkLimitAndParsing(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -68,7 +68,7 @@ func TestWalkLimitAndParsing(t *testing.T) {
 	if err != nil || len(names) != maxMatches {
 		t.Fatal(names, err)
 	}
-	if scan.ownedBy("99", scan.uid) || isPID("") || isPID("12x") || !isPID("123") {
+	if ownedBy(scan.root, "99", scan.uid) || isPID("") || isPID("12x") || !isPID("123") {
 		t.Fatal("invalid PID/ownership")
 	}
 	if realUID([]byte("Name: only\n")) != "" || firstField(" \t") != "" {

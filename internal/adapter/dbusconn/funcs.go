@@ -18,19 +18,36 @@ func New(base context.Context) *Bus {
 		base = context.Background()
 	}
 
-	cache := new(connections)
+	cache := new(connections[port.BusKind, *dbus.Conn])
 
 	cache.open = openConnection
 
-	return &Bus{
-		connect: func(kind port.BusKind) (*dbus.Conn, error) { return connect(base, cache, kind) },
-		release: func() error { return closeConnections(cache) },
-	}
+	return &Bus{source: connectionSource[port.BusKind, *dbus.Conn]{
+		Acquire: func(kind port.BusKind) (*dbus.Conn, error) { return connect(base, cache, kind) },
+		Release: func() error { return closeConnections(cache) },
+	}}
 }
 
 // HasOwner reports whether a well-known name currently has an owner.
-func (bus *connectionBus[K, C]) HasOwner(ctx context.Context, kind K, name string) (bool, error) {
-	conn, err := bus.connect(kind)
+func (bus *connectionBus[K, C, O, Q]) HasOwner(
+	ctx context.Context,
+	kind K,
+	name string,
+) (bool, error) {
+	result, err := checkOwner(ctx, selectConnection(bus.source, kind), name)
+	if err != nil {
+		return result, fmt.Errorf("dbusconn: owner query: %w", err)
+	}
+
+	return result, nil
+}
+
+func checkOwner[C connection](
+	ctx context.Context,
+	connect func() (C, error),
+	name string,
+) (bool, error) {
+	conn, err := connect()
 	if err != nil {
 		return false, fmt.Errorf(errCheckOwner, err)
 	}
@@ -48,19 +65,29 @@ func (bus *connectionBus[K, C]) HasOwner(ctx context.Context, kind K, name strin
 }
 
 // Introspect returns the raw introspection XML for an object path.
-func (bus *connectionBus[K, C]) Introspect(
+func (bus *connectionBus[K, C, O, Q]) Introspect(
 	ctx context.Context,
 	kind K,
-	object *port.Object,
+	object O,
 ) (string, error) {
-	conn, err := bus.connect(kind)
+	result, err := readIntrospection(ctx, selectConnection(bus.source, kind), object)
+
+	return result, errors.Join(err)
+}
+
+func readIntrospection[C connection, O interface {
+	Address() (destination, path string)
+}](ctx context.Context, connect func() (C, error), object O) (string, error) {
+	conn, err := connect()
 	if err != nil {
 		return "", fmt.Errorf(errIntrospect, err)
 	}
 
+	destination, path := object.Address()
+
 	var xml string
 
-	err = conn.Object(object.Destination, dbus.ObjectPath(object.Path)).
+	err = conn.Object(destination, dbus.ObjectPath(path)).
 		CallWithContext(ctx, "org.freedesktop.DBus.Introspectable.Introspect", 0).
 		Store(&xml)
 	if err != nil {
@@ -71,44 +98,70 @@ func (bus *connectionBus[K, C]) Introspect(
 }
 
 // Property reads a single property off an interface.
-func (bus *connectionBus[K, C]) Property(
+func (bus *connectionBus[K, C, O, Q]) Property(
 	ctx context.Context,
 	kind K,
-	query *port.PropertyQuery,
+	query Q,
 ) (any, error) {
-	conn, err := bus.connect(kind)
+	result, err := readProperty(ctx, selectConnection(bus.source, kind), query)
 	if err != nil {
 		return nil, fmt.Errorf(errReadProperty, err)
 	}
+
+	return result.Value(), nil
+}
+
+func readProperty[C connection, Q interface {
+	PropertyAddress() port.PropertyAddress
+}](ctx context.Context, connect func() (C, error), query Q) (dbus.Variant, error) {
+	conn, err := connect()
+	if err != nil {
+		return dbus.Variant{}, fmt.Errorf(errReadProperty, err)
+	}
+
+	address := query.PropertyAddress()
 
 	var variant dbus.Variant
 
-	err = conn.Object(query.Object.Destination, dbus.ObjectPath(query.Object.Path)).
-		CallWithContext(ctx, "org.freedesktop.DBus.Properties.Get", 0, query.Interface, query.Name).
+	err = conn.Object(address.Destination, dbus.ObjectPath(address.Path)).
+		CallWithContext(ctx, "org.freedesktop.DBus.Properties.Get", 0, address.Interface, address.Name).
 		Store(&variant)
 	if err != nil {
-		return nil, fmt.Errorf(errReadProperty, err)
+		return dbus.Variant{}, fmt.Errorf(errReadProperty, err)
 	}
 
-	return variant.Value(), nil
+	return variant, nil
 }
 
 // Properties reads every property on an interface in one round trip, which is
 // what makes reading a logind session cost one message instead of nine.
-func (bus *connectionBus[K, C]) Properties(
+func (bus *connectionBus[K, C, O, Q]) Properties(
 	ctx context.Context,
 	kind K,
-	query *port.PropertyQuery,
+	query Q,
 ) (map[string]any, error) {
-	conn, err := bus.connect(kind)
+	result, err := readProperties(ctx, selectConnection(bus.source, kind), query)
 	if err != nil {
 		return nil, fmt.Errorf(errReadProperties, err)
 	}
 
+	return result, nil
+}
+
+func readProperties[C connection, Q interface {
+	PropertyAddress() port.PropertyAddress
+}](ctx context.Context, connect func() (C, error), query Q) (map[string]any, error) {
+	conn, err := connect()
+	if err != nil {
+		return nil, fmt.Errorf(errReadProperties, err)
+	}
+
+	address := query.PropertyAddress()
+
 	var raw map[string]dbus.Variant
 
-	err = conn.Object(query.Object.Destination, dbus.ObjectPath(query.Object.Path)).
-		CallWithContext(ctx, "org.freedesktop.DBus.Properties.GetAll", 0, query.Interface).
+	err = conn.Object(address.Destination, dbus.ObjectPath(address.Path)).
+		CallWithContext(ctx, "org.freedesktop.DBus.Properties.GetAll", 0, address.Interface).
 		Store(&raw)
 	if err != nil {
 		return nil, fmt.Errorf(errReadProperties, err)
@@ -129,7 +182,7 @@ func variantValues(raw map[string]dbus.Variant) map[string]any {
 }
 
 // Close releases whichever connections were actually opened.
-func closeConnections(cache *connections) error {
+func closeConnections(cache *connections[port.BusKind, *dbus.Conn]) error {
 	errs := make([]error, noEntries, len(cache.conns))
 
 	for i := range cache.conns {
@@ -147,7 +200,11 @@ func closeConnections(cache *connections) error {
 // conn establishes a bus on first use and caches the outcome, including the
 // failure. A machine without a session bus should pay for exactly one failed
 // connect attempt, not one per probe.
-func connect(base context.Context, cache *connections, kind port.BusKind) (*dbus.Conn, error) {
+func connect(
+	base context.Context,
+	cache *connections[port.BusKind, *dbus.Conn],
+	kind port.BusKind,
+) (*dbus.Conn, error) {
 	i := int(kind)
 	if i >= len(cache.conns) {
 		return nil, ErrBusKind
@@ -181,11 +238,35 @@ func openConnection(base context.Context, kind port.BusKind) (*dbus.Conn, error)
 }
 
 // Close releases the private connections owned by this bus.
-func (bus *connectionBus[K, C]) Close() error {
-	err := bus.release()
+func (bus *connectionBus[K, C, O, Q]) Close() error {
+	return errors.Join(releaseConnection(bus.source.Shutdown))
+}
+
+func releaseConnection(release func() error) error {
+	err := release()
 	if err != nil {
 		return fmt.Errorf("dbusconn: close connections: %w", err)
 	}
 
 	return nil
+}
+
+// selectConnection binds a bus kind for operations that only need a connection provider.
+func selectConnection[K, C any](
+	source interface{ Get(kind K) (C, error) },
+	kind K,
+) func() (C, error) {
+	return func() (C, error) { return source.Get(kind) }
+}
+
+// Get selects or opens the connection for kind.
+func (source connectionSource[K, C]) Get(kind K) (C, error) {
+	result, err := source.Acquire(kind)
+
+	return result, errors.Join(err)
+}
+
+// Shutdown releases all connections owned by the source.
+func (source connectionSource[K, C]) Shutdown() error {
+	return errors.Join(source.Release())
 }

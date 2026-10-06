@@ -94,17 +94,17 @@ func wanted(scan *scanner, entry string) (string, bool) {
 		return noValue, false
 	}
 
-	name := scan.commName(entry)
+	name := commName(scan.root, entry)
 	if !accepts(scan, name) {
 		return noValue, false
 	}
 
-	return name, scan.ownedBy(entry, scan.uid)
+	return name, ownedBy(scan.root, entry, scan.uid)
 }
 
 // commName reads a process's command name, or "" when it has gone away.
-func (scan *scanner) commName(entry string) string {
-	name, err := sysfs.String(filepath.Join(scan.root, entry, commFile))
+func commName(root, entry string) string {
+	name, err := sysfs.String(filepath.Join(root, entry, commFile))
 	if err != nil {
 		return noValue
 	}
@@ -130,8 +130,8 @@ func isPID(name string) bool {
 
 // ownedBy confirms a process belongs to uid by reading the Uid: line of its
 // status file, whose first field is the real uid.
-func (scan *scanner) ownedBy(pid, uid string) bool {
-	data, err := sysfs.Bytes(filepath.Join(scan.root, pid, statusFile))
+func ownedBy(root, pid, uid string) bool {
+	data, err := sysfs.Bytes(filepath.Join(root, pid, statusFile))
 	if err != nil {
 		return false
 	}

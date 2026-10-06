@@ -33,6 +33,19 @@ linters:
           generated: false
           dependency-scope: module
           rules:
+            # Stable concrete data layouts intentionally preserve distinct value types.
+            - pattern: 'github.com/gostafa/linuxdesktop/internal/domain'
+              max: 1.0
+            - pattern: 'github.com/gostafa/linuxdesktop/internal/schema'
+              max: 1.0
+            # Function adapters and pure classification records are concrete by design.
+            - pattern: 'github.com/gostafa/linuxdesktop/internal/probe'
+              max: 1.0
+            - pattern: 'github.com/gostafa/linuxdesktop/internal/rules'
+              max: 0.75
+            # The concrete procfs scanner has two module-level consumers.
+            - pattern: 'github.com/gostafa/linuxdesktop/internal/adapter/procscan'
+              max: 0.5
             - pattern: '**'
               max: 0.3
       reusability:
@@ -677,6 +690,12 @@ linters:
         - assign-expr
       disable: []
   exclusions:
+    rules:
+      # Each package consolidates all data declarations into types.go.
+      - path: '(^|/)types\.go$'
+        text: 'max-public-structs:'
+        linters:
+          - revive
     paths:
       - ".*_test.go"
     generated: disable

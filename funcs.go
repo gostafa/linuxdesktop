@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/gostafa/linuxdesktop/internal/adapter/dbusconn"
@@ -22,26 +23,167 @@ import (
 	"github.com/gostafa/linuxdesktop/internal/adapter/wayland"
 	"github.com/gostafa/linuxdesktop/internal/adapter/x11"
 	"github.com/gostafa/linuxdesktop/internal/core"
+	"github.com/gostafa/linuxdesktop/internal/domain"
 	"github.com/gostafa/linuxdesktop/internal/port"
 	"github.com/gostafa/linuxdesktop/internal/rules"
 )
 
-var (
-	// Compile-time proof that every adapter still satisfies the port it is wired
-	// to. These cost nothing at runtime and catch a broken signature at build time
-	// rather than at the injection site.
-	_ port.EnvProbe     = env.Probe(nil)
-	_ port.OSProbe      = osinfo.Probe(nil)
-	_ port.SessionProbe = logind.Probe(nil)
-	_ port.X11Probe     = x11.Probe(nil)
-	_ port.WaylandProbe = wayland.Probe(nil)
-	_ port.DesktopProbe = desktop.Probe(nil)
-	_ port.GPUProbe     = drm.Probe(nil)
-	_ port.StackProbe   = gl.Probe(nil)
-	_ port.PortalProbe  = portal.Probe(nil)
-	_ port.ProcessProbe = (*procscan.Probe)(nil)
-	_ port.Bus          = (*dbusconn.Bus)(nil)
-)
+// newConfig applies public options before crossing the internal boundary.
+func newConfig(opts ...Option) *core.Config {
+	cfg := publicConfig(opts)
+
+	return &core.Config{
+		Timeout:      cfg.Timeout,
+		ProbeTimeout: cfg.ProbeTimeout,
+		Sections:     domain.Section(cfg.Sections),
+		NativeGL:     cfg.NativeGL,
+		ProcessScan:  cfg.ProcessScan,
+	}
+}
+
+func publicConfig(opts []Option) Config {
+	cfg := Config{
+		Timeout:      DefaultTimeout,
+		ProbeTimeout: DefaultProbeTimeout,
+		Sections:     SectionAll,
+		NativeGL:     false,
+		ProcessScan:  false,
+	}
+
+	for i := range opts {
+		if opts[i] != nil {
+			opts[i](&cfg)
+		}
+	}
+
+	if cfg.Sections == zero {
+		cfg.Sections = SectionAll
+	}
+
+	return cfg
+}
+
+// publicEnvironment translates the internal model without sharing mutable data.
+func publicEnvironment(source *domain.Environment) *Environment {
+	return &Environment{
+		OS:         OSInfo(source.OS),
+		Session:    publicSession(&source.Session),
+		Display:    publicDisplay(&source.Display),
+		Desktop:    publicDesktop(&source.Desktop),
+		Compositor: publicCompositor(&source.Compositor),
+		Graphics:   publicGraphics(&source.Graphics),
+		Portal:     PortalInfo(source.Portal),
+		Headless:   source.Headless,
+	}
+}
+
+func publicSession(source *domain.SessionInfo) SessionInfo {
+	return SessionInfo{
+		ID:                source.ID,
+		Seat:              source.Seat,
+		Type:              SessionType(source.Type),
+		Desktop:           source.Desktop,
+		Name:              source.Name,
+		User:              source.User,
+		XDGSessionType:    source.XDGSessionType,
+		XDGSessionDesktop: source.XDGSessionDesktop,
+		VTNumber:          source.VTNumber,
+		Remote:            source.Remote,
+		Active:            source.Active,
+	}
+}
+
+func publicDesktop(source *domain.DesktopInfo) DesktopInfo {
+	return DesktopInfo{
+		Environment:     DesktopEnvironment(source.Environment),
+		Name:            source.Name,
+		Version:         source.Version,
+		CurrentDesktop:  source.CurrentDesktop,
+		SessionDesktop:  source.SessionDesktop,
+		DesktopSession:  source.DesktopSession,
+		CurrentDesktops: slices.Clone(source.CurrentDesktops),
+	}
+}
+
+func publicCompositor(source *domain.CompositorInfo) CompositorInfo {
+	return CompositorInfo{
+		Kind:       CompositorKind(source.Kind),
+		Name:       source.Name,
+		Version:    source.Version,
+		Confidence: DetectionConfidence(source.Confidence),
+		DetectedBy: DetectionMethod(source.DetectedBy),
+		Wayland:    source.Wayland,
+		X11:        source.X11,
+	}
+}
+
+func publicGraphics(source *domain.GraphicsInfo) GraphicsInfo {
+	return GraphicsInfo{
+		OpenGL:     OpenGLInfo(source.OpenGL),
+		Vulkan:     VulkanInfo(source.Vulkan),
+		PrimaryGPU: source.PrimaryGPU,
+		GPUs:       publicGPUs(source.GPUs),
+	}
+}
+
+func publicDisplay(source *domain.DisplayInfo) DisplayInfo {
+	out := DisplayInfo{
+		Protocol:         DisplayProtocol(source.Protocol),
+		WaylandDisplay:   source.WaylandDisplay,
+		X11Display:       source.X11Display,
+		X11Available:     source.X11Available,
+		WaylandAvailable: source.WaylandAvailable,
+		XWayland:         source.XWayland,
+		Wayland:          nil,
+		X11:              nil,
+	}
+
+	out.X11 = publicX11(source.X11)
+	out.Wayland = publicWayland(source.Wayland)
+
+	return out
+}
+
+func publicX11(source *domain.X11Info) *X11Info {
+	if source == nil {
+		return nil
+	}
+
+	info := X11Info(*source)
+
+	info.Extensions = slices.Clone(source.Extensions)
+
+	return &info
+}
+
+func publicWayland(source *domain.WaylandInfo) *WaylandInfo {
+	if source == nil {
+		return nil
+	}
+
+	out := &WaylandInfo{Display: source.Display, SocketFD: source.SocketFD, Globals: nil}
+	if source.Globals != nil {
+		out.Globals = make([]WaylandGlobal, zero, len(source.Globals))
+		for i := range source.Globals {
+			out.Globals = append(out.Globals, WaylandGlobal(source.Globals[i]))
+		}
+	}
+
+	return out
+}
+
+func publicGPUs(source []domain.GPUInfo) []GPUInfo {
+	if source == nil {
+		return nil
+	}
+
+	out := make([]GPUInfo, zero, len(source))
+	for i := range source {
+		out = append(out, GPUInfo(source[i]))
+	}
+
+	return out
+}
 
 // Detect reports the complete desktop environment using the default options.
 //

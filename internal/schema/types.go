@@ -3,6 +3,10 @@
 
 package schema
 
+import (
+	"time"
+)
+
 type (
 	// Environment is the shared Environment layout, parameterized by its component types.
 	Environment[
@@ -86,5 +90,67 @@ type (
 		Globals []GlobalType `json:"globals,omitempty"`
 		// SocketFD inherited WAYLAND_SOCKET descriptor, when present.
 		SocketFD int `json:"socket_fd,omitempty"`
+	}
+
+	// Config is the shared Config layout, parameterized by its component types.
+	Config[SectionsType any] struct {
+		// Sections selects the environment sections to detect.
+		Sections SectionsType
+		// Timeout bounds the entire detection run.
+		Timeout time.Duration
+		// ProbeTimeout bounds each individual probe.
+		ProbeTimeout time.Duration
+		// NativeGL enables native graphics library probes.
+		NativeGL bool
+		// ProcessScan enables process-based desktop detection.
+		ProcessScan bool
+	}
+
+	// DesktopInfo is the shared DesktopInfo layout, parameterized by its component types.
+	DesktopInfo[DesktopType any] struct {
+		// Environment recognized desktop environment.
+		Environment DesktopType `json:"environment"`
+		// Name human-readable name reported by the source.
+		Name string `json:"name"`
+		// Version version reported by the source, when available.
+		Version string `json:"version,omitempty"`
+		// CurrentDesktop unmodified XDG_CURRENT_DESKTOP value.
+		CurrentDesktop string `json:"current_desktop"`
+		// SessionDesktop unmodified XDG_SESSION_DESKTOP value.
+		SessionDesktop string `json:"session_desktop"`
+		// DesktopSession unmodified DESKTOP_SESSION value.
+		DesktopSession string `json:"desktop_session"`
+		// CurrentDesktops ordered desktop tokens from XDG_CURRENT_DESKTOP.
+		CurrentDesktops []string `json:"current_desktops"`
+	}
+
+	// CompositorInfo is the shared CompositorInfo layout, parameterized by its component types.
+	CompositorInfo[KindType, ConfidenceType, MethodType any] struct {
+		// Kind identifies the compositor or window manager.
+		Kind KindType `json:"kind"`
+		// Confidence expresses the certainty of the identification.
+		Confidence ConfidenceType `json:"confidence"`
+		// DetectedBy identifies the source of detection evidence.
+		DetectedBy MethodType `json:"detected_by"`
+		// Name is the human-readable compositor name.
+		Name string `json:"name"`
+		// Version is the reported compositor version, when available.
+		Version string `json:"version,omitempty"`
+		// Wayland reports whether the compositor supports Wayland.
+		Wayland bool `json:"wayland"`
+		// X11 reports whether the window manager supports X11.
+		X11 bool `json:"x11"`
+	}
+
+	// GraphicsInfo is the shared GraphicsInfo layout, parameterized by its component types.
+	GraphicsInfo[OpenGLType, VulkanType, GPUType any] struct {
+		// OpenGL openGL implementation reported by drivers or manifests.
+		OpenGL OpenGLType `json:"opengl"`
+		// Vulkan vulkan loader and driver availability.
+		Vulkan VulkanType `json:"vulkan"`
+		// PrimaryGPU identifier of the firmware-posted GPU, or the first detected GPU.
+		PrimaryGPU string `json:"primary_gpu,omitempty"`
+		// GPUs detected DRM devices with their PCI identity.
+		GPUs []GPUType `json:"gpus"`
 	}
 )

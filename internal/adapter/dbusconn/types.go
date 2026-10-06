@@ -13,7 +13,7 @@ import (
 
 type (
 	// Bus implements port.Bus over two lazily established private connections.
-	Bus = connectionBus[port.BusKind, *dbus.Conn]
+	Bus = connectionBus[port.BusKind, *dbus.Conn, *port.Object, *port.PropertyQuery]
 
 	connection interface {
 		BusObject() dbus.BusObject
@@ -21,16 +21,30 @@ type (
 	}
 
 	// connectionBus separates bus operations from connection selection and lifetime.
-	connectionBus[K any, C connection] struct {
-		connect func(K) (C, error)
-		release func() error
+	connectionBus[K any, C connection, O interface {
+		Address() (destination, path string)
+	}, Q interface {
+		PropertyAddress() port.PropertyAddress
+	}] struct {
+		source interface {
+			Get(kind K) (C, error)
+			Shutdown() error
+		}
+	}
+
+	// connectionSource supplies connection acquisition and release independently of bus operations.
+	connectionSource[K, C any] struct {
+		// Acquire selects or opens a connection.
+		Acquire func(K) (C, error)
+		// Release closes the connections owned by the source.
+		Release func() error
 	}
 
 	// connections caches the result of opening each private connection once.
-	connections struct {
-		open  func(context.Context, port.BusKind) (*dbus.Conn, error)
+	connections[K, C any] struct {
+		open  func(context.Context, K) (C, error)
 		errs  [2]error
-		conns [2]*dbus.Conn
+		conns [2]C
 		once  [2]sync.Once
 	}
 )

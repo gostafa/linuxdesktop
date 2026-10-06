@@ -3,6 +3,10 @@
 
 package linuxdesktop
 
+import (
+	"time"
+)
+
 // Detection flags and identities describe the selected sections and recognized desktop components.
 const (
 	// SectionOS selects operating system information. Combine the section flags
@@ -96,4 +100,11 @@ const (
 
 	// goosLinux is the operating system supported by detection.
 	goosLinux = "linux"
+
+	// DefaultTimeout bounds a whole detection run and
+	// DefaultProbeTimeout bounds each probe within it, so one unresponsive server
+	// cannot consume the entire budget.
+	DefaultTimeout = 2 * time.Second
+	// DefaultProbeTimeout bounds each individual detection probe.
+	DefaultProbeTimeout = 500 * time.Millisecond
 )

@@ -4,10 +4,17 @@
 package dbusconn
 
 import (
+	"bufio"
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
+	"net"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/gostafa/linuxdesktop/internal/port"
@@ -24,7 +31,8 @@ func (object fakeObject) CallWithContext(context.Context, string, dbus.Flags, ..
 
 type fakeConnection struct{ object fakeObject }
 
-func (conn fakeConnection) BusObject() dbus.BusObject                     { return conn.object }
+func (conn fakeConnection) BusObject() dbus.BusObject { return conn.object }
+
 func (conn fakeConnection) Object(string, dbus.ObjectPath) dbus.BusObject { return conn.object }
 
 func TestBusOperations(t *testing.T) {
@@ -41,11 +49,13 @@ func TestBusOperations(t *testing.T) {
 		{body: []any{dbus.MakeVariant("value")}},
 		{body: []any{map[string]dbus.Variant{"key": dbus.MakeVariant("value")}}},
 	} {
-		bus := connectionBus[port.BusKind, fakeConnection]{
-			connect: func(port.BusKind) (fakeConnection, error) {
-				return fakeConnection{
-					fakeObject{call: &dbus.Call{Body: tc.body, Err: tc.err}},
-				}, tc.connectErr
+		bus := connectionBus[port.BusKind, fakeConnection, *port.Object, *port.PropertyQuery]{
+			source: connectionSource[port.BusKind, fakeConnection]{
+				Acquire: func(port.BusKind) (fakeConnection, error) {
+					return fakeConnection{
+						fakeObject{call: &dbus.Call{Body: tc.body, Err: tc.err}},
+					}, tc.connectErr
+				},
 			},
 		}
 		ctx := t.Context()
@@ -86,9 +96,11 @@ func TestBusOperations(t *testing.T) {
 
 type transport struct{ closed error }
 
-func (transport) Read([]byte) (int, error)       { return 0, io.EOF }
+func (transport) Read([]byte) (int, error) { return 0, io.EOF }
+
 func (transport) Write(data []byte) (int, error) { return len(data), nil }
-func (conn transport) Close() error              { return conn.closed }
+
+func (conn transport) Close() error { return conn.closed }
 
 func TestConnectionLifetime(t *testing.T) {
 	t.Parallel()
@@ -98,7 +110,7 @@ func TestConnectionLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	cache := connections{
+	cache := connections[port.BusKind, *dbus.Conn]{
 		open: func(context.Context, port.BusKind) (*dbus.Conn, error) { calls++; return conn, nil },
 	}
 	for range 2 {
@@ -122,22 +134,96 @@ func TestConnectionLifetime(t *testing.T) {
 	if err = New(t.Context()).Close(); err != nil {
 		t.Fatal(err)
 	}
-	bus := Bus{release: func() error { return failure }}
+	bus := Bus{
+		source: connectionSource[port.BusKind, *dbus.Conn]{
+			Release: func() error { return failure },
+		},
+	}
 	if err = bus.Close(); !errors.Is(err, failure) {
 		t.Fatal("close error was lost", err)
 	}
 }
 
-func TestHostConnectionFailures(t *testing.T) {
-	t.Setenv("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/nonexistent-linuxdesktop-test-bus")
-	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent-linuxdesktop-test-bus")
-	bus := New(nil)
-	for _, kind := range []port.BusKind{port.SessionBus, port.SystemBus} {
-		if _, err := bus.HasOwner(t.Context(), kind, "fixture"); err == nil {
-			t.Fatal("connected to missing bus")
-		}
-	}
-	if err := bus.Close(); err != nil {
+// TestOpenConnection exercises authentication and Hello over a real local socket,
+// independently of any desktop session bus installed on the test host.
+func TestOpenConnection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bus")
+	listener, err := net.Listen("unix", path)
+	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = listener.Close() })
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+path)
+	done := make(chan error, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			done <- err
+			return
+		}
+		defer conn.Close()
+		if err = conn.SetDeadline(time.Now().Add(5 * time.Second)); err == nil {
+			err = serveBusHello(conn)
+		}
+		done <- err
+	}()
+	conn, err := openConnection(t.Context(), port.SessionBus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conn.Names()) == 0 || conn.Names()[0] != ":1.1" {
+		t.Fatal("Hello did not establish the connection identity", conn.Names())
+	}
+	if err = conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func serveBusHello(conn net.Conn) error {
+	reader := bufio.NewReader(conn)
+	if _, err := reader.ReadByte(); err != nil {
+		return err
+	}
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		line = strings.TrimSpace(line)
+		if line == "BEGIN" {
+			break
+		}
+		response := "ERROR unsupported\r\n"
+		if line == "AUTH" {
+			response = "REJECTED EXTERNAL\r\n"
+		} else if strings.HasPrefix(line, "AUTH EXTERNAL") {
+			response = "OK 0123456789abcdef0123456789abcdef\r\n"
+		}
+		if _, err = io.WriteString(conn, response); err != nil {
+			return err
+		}
+	}
+	request, err := dbus.DecodeMessage(reader)
+	if err != nil {
+		return err
+	}
+	if request.Headers[dbus.FieldMember].Value() != "Hello" {
+		return fmt.Errorf("unexpected method: %v", request.Headers[dbus.FieldMember])
+	}
+	reply := dbus.Message{
+		Type: dbus.TypeMethodReply,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldReplySerial: dbus.MakeVariant(request.Serial()),
+			dbus.FieldSignature:   dbus.MakeVariant(dbus.SignatureOf(":1.1")),
+		},
+		Body: []any{":1.1"},
+	}
+	if err = reply.EncodeTo(conn, binary.LittleEndian); err != nil {
+		return err
+	}
+	_, err = io.Copy(io.Discard, reader)
+	return err
 }

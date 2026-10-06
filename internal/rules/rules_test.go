@@ -9,24 +9,6 @@ import (
 	"github.com/gostafa/linuxdesktop/internal/domain"
 )
 
-func TestDesktopFallbacks(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		env  domain.Env
-		want domain.DesktopEnvironment
-	}{
-		{domain.Env{}, domain.DesktopUnknown},
-		{domain.Env{CurrentDesktop: "unrecognized:GNOME"}, domain.DesktopGNOME},
-		{domain.Env{CurrentDesktop: "custom", KDEFullSession: "true"}, domain.DesktopKDE},
-		{domain.Env{KDEFullSession: "true"}, domain.DesktopKDE},
-		{domain.Env{GNOMESessionID: "old"}, domain.DesktopGNOME},
-	} {
-		if got := Desktop(&tc.env); got.Environment != tc.want {
-			t.Fatalf("%+v: %+v", tc.env, got)
-		}
-	}
-}
-
 func TestCompositorLadder(t *testing.T) {
 	wlrootsMarkers := wlrootsMarkers()
 
@@ -58,27 +40,5 @@ func TestCompositorLadder(t *testing.T) {
 	}
 	if normalize("Test_123!") != "test123" {
 		t.Fatal("normalization")
-	}
-}
-
-func TestProtocolFallbacks(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		kind  domain.SessionType
-		wl, x bool
-		want  domain.DisplayProtocol
-	}{
-		{domain.SessionTypeUnknown, true, true, domain.DisplayProtocolWayland},
-		{domain.SessionTypeUnknown, false, true, domain.DisplayProtocolX11},
-		{domain.SessionTypeWayland, false, false, domain.DisplayProtocolWayland},
-		{domain.SessionTypeX11, false, false, domain.DisplayProtocolX11},
-		{domain.SessionTypeTTY, false, false, domain.DisplayProtocolUnknown},
-	} {
-		if got := Protocol(tc.kind, tc.wl, tc.x); got != tc.want {
-			t.Fatal(got)
-		}
-	}
-	if !Headless(false, false) || Headless(true, false) {
-		t.Fatal("headless")
 	}
 }

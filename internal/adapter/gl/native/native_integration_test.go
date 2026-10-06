@@ -3,18 +3,19 @@
 // Gostafa 2026.
 // SPDX-License-Identifier: Apache-2.0.
 
-package native
+package native_test
 
 import (
+	"github.com/gostafa/linuxdesktop/internal/adapter/gl/native"
 	"testing"
 )
 
 func TestUnsupportedPlatform(t *testing.T) {
 	t.Parallel()
-	if version, ok := Vulkan(); ok || version != "" {
+	if version, ok := native.Vulkan(); ok || version != "" {
 		t.Fatal("unexpected Vulkan support")
 	}
-	if info, ok := OpenGL(); ok || info.Available {
+	if info, ok := native.OpenGL(); ok || info.Available {
 		t.Fatal("unexpected OpenGL support")
 	}
 }

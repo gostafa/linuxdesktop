@@ -12,23 +12,6 @@ import (
 	"github.com/gostafa/linuxdesktop/internal/port"
 )
 
-type fakeBus struct {
-	port.Bus
-	value any
-	err   error
-}
-
-func (bus fakeBus) Property(
-	_ context.Context,
-	kind port.BusKind,
-	query *port.PropertyQuery,
-) (any, error) {
-	if kind != port.SessionBus || query.Name != shellVersion {
-		return nil, errors.New("invalid query")
-	}
-	return bus.value, bus.err
-}
-
 func TestDesktopVersions(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -50,4 +33,21 @@ func TestDesktopVersions(t *testing.T) {
 			t.Fatalf("%s: %+v, %v", tc.desktop, info, err)
 		}
 	}
+}
+
+type fakeBus struct {
+	port.Bus
+	value any
+	err   error
+}
+
+func (bus fakeBus) Property(
+	_ context.Context,
+	kind port.BusKind,
+	query *port.PropertyQuery,
+) (any, error) {
+	if kind != port.SessionBus || query.Name != shellVersion {
+		return nil, errors.New("invalid query")
+	}
+	return bus.value, bus.err
 }
