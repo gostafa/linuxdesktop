@@ -96,7 +96,7 @@ func TestInitializeDisplaySkipsAbsentDisplay(t *testing.T) {
 		t.Fatalf("display = %d, ok = %v", display, ok)
 	}
 	// No display must never reach initialization.
-	egl.getDisplay = func(uintptr) uintptr { return eglNoDisplay }
+	egl.getDisplay = func(uintptr) uintptr { return zero }
 	egl.initialize = func(_ uintptr, _, _ *int32) uint32 { calls = append(calls, "initialize"); return 1 }
 	if _, ok := initializeDisplay(&egl); ok || len(calls) != 0 {
 		t.Fatal("initialized an absent display")

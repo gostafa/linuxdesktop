@@ -50,6 +50,9 @@ func TestPublicSections(t *testing.T) {
 	}
 	_ = waylandAvailable()
 	_ = x11Available()
+	_ = IsWayland()
+	_ = IsX11()
+	_ = IsHeadless()
 	if graphicsProbe(&core.Config{}) == nil {
 		t.Fatal("default graphics probe missing")
 	}
