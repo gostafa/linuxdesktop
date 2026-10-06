@@ -18,7 +18,7 @@ func TestCompositorLadder(t *testing.T) {
 		name   string
 		method domain.DetectionMethod
 	}{
-		{domain.Signals{}, "", domain.DetectedUnknown},
+		{domain.Signals{}, "", domain.Unknown},
 		{domain.Signals{Env: domain.Env{HyprlandSignature: "x"}}, nameHyprland, domain.DetectedEnvironment},
 		{domain.Signals{Env: domain.Env{SwaySock: "x"}}, nameSway, domain.DetectedEnvironment},
 		{domain.Signals{Env: domain.Env{WayfireSocket: "x"}}, nameWayfire, domain.DetectedEnvironment},

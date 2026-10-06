@@ -23,7 +23,7 @@ import (
 
 func TestPublicAPIUsage(t *testing.T) {
 	var session linuxdesktop.SessionType = linuxdesktop.SessionTypeWayland
-	var protocol linuxdesktop.DisplayProtocol = linuxdesktop.DisplayProtocolWayland
+	var protocol linuxdesktop.DisplayProtocol = linuxdesktop.DisplayProtocol(linuxdesktop.SessionTypeWayland)
 	var sections linuxdesktop.Section = linuxdesktop.SectionOS | linuxdesktop.SectionDisplay
 	result := linuxdesktop.Environment{
 		Session: linuxdesktop.SessionInfo{Type: session},
@@ -174,8 +174,8 @@ func TestNonLinuxDetection(t *testing.T) {
 	called := false
 	out, err := linuxdesktop.DetectContext(nil, nil, func(c *linuxdesktop.Config) { called = true })
 	if !called || !errors.Is(err, linuxdesktop.ErrNotLinux) || out == nil || !out.Headless ||
-		out.Session.Type != linuxdesktop.SessionTypeUnknown || out.Display.Protocol != linuxdesktop.DisplayProtocolUnknown ||
-		out.Desktop.Environment != linuxdesktop.DesktopUnknown {
+		out.Session.Type != linuxdesktop.Unknown || out.Display.Protocol != linuxdesktop.Unknown ||
+		out.Desktop.Environment != linuxdesktop.Unknown {
 		t.Fatalf("unexpected non-Linux result: %+v, %v (option called: %v)", out, err, called)
 	}
 	if linuxdesktop.IsWayland() || linuxdesktop.IsX11() || !linuxdesktop.IsHeadless() {

@@ -27,7 +27,7 @@ func desktopTokens(key string) (value domain.DesktopEnvironment, ok bool) {
 
 func desktopAliases() map[domain.DesktopEnvironment][]string {
 	return map[domain.DesktopEnvironment][]string{
-		domain.DesktopUnknown:  nil,
+		domain.Unknown:         nil,
 		domain.DesktopGNOME:    gnomeTokens(),
 		domain.DesktopKDE:      plasmaTokens(),
 		domain.DesktopXFCE:     {"xfce", "xfce4", "xubuntu"},
@@ -119,10 +119,10 @@ func otherFingerprints() []fingerprint {
 		{iface: "wayfire_shell", match: match{domain.CompositorWayfire, nameWayfire}},
 		{iface: "river_status_manager_v1", match: match{domain.CompositorRiver, nameRiver}},
 		{iface: "river_control_v1", match: match{domain.CompositorRiver, nameRiver}},
-		{iface: "zcosmic_toplevel_info_v1", match: match{domain.CompositorUnknown, nameCosmicComp}},
+		{iface: "zcosmic_toplevel_info_v1", match: match{domain.Unknown, nameCosmicComp}},
 		{
 			iface: "zcosmic_workspace_manager_v1",
-			match: match{domain.CompositorUnknown, nameCosmicComp},
+			match: match{domain.Unknown, nameCosmicComp},
 		},
 	}
 }
@@ -158,8 +158,8 @@ func windowManagerNamesTableA() map[string]match {
 	return map[string]match{
 		tokenMutter:    {domain.CompositorMutter, nameMutter},
 		nameGnomeshell: {domain.CompositorMutter, "GNOME Shell"},
-		"muttermuffin": {domain.CompositorUnknown, nameMuffin},
-		nameMuffin:     {domain.CompositorUnknown, nameMuffin},
+		"muttermuffin": {domain.Unknown, nameMuffin},
+		nameMuffin:     {domain.Unknown, nameMuffin},
 		tokenKwin:      {domain.CompositorKWin, nameKWin},
 		tokenXfwm4:     {domain.CompositorXfwm, nameXfwm4},
 		tokenMarco:     {domain.CompositorMarco, nameMarco},
@@ -174,23 +174,23 @@ func windowManagerNamesTableB() map[string]match {
 		nameSway:   {domain.CompositorSway, nameSway},
 		nameLabwc:  {domain.CompositorLabwc, nameLabwc},
 		nameWeston: {domain.CompositorWeston, nameWeston},
-		nameGala:   {domain.CompositorUnknown, nameGala},
-		"budgiewm": {domain.CompositorUnknown, nameBudgieWM},
-		"compiz":   {domain.CompositorUnknown, "Compiz"},
-		"metacity": {domain.CompositorUnknown, "Metacity"},
-		"icewm":    {domain.CompositorUnknown, "IceWM"},
-		"fluxbox":  {domain.CompositorUnknown, "Fluxbox"},
-		nameBspwm:  {domain.CompositorUnknown, nameBspwm},
+		nameGala:   {domain.Unknown, nameGala},
+		"budgiewm": {domain.Unknown, nameBudgieWM},
+		"compiz":   {domain.Unknown, "Compiz"},
+		"metacity": {domain.Unknown, "Metacity"},
+		"icewm":    {domain.Unknown, "IceWM"},
+		"fluxbox":  {domain.Unknown, "Fluxbox"},
+		nameBspwm:  {domain.Unknown, nameBspwm},
 	}
 }
 
 func windowManagerNamesTableC() map[string]match {
 	return map[string]match{
-		nameDwm:          {domain.CompositorUnknown, nameDwm},
-		nameQtile:        {domain.CompositorUnknown, nameQtile},
-		nameXmonad:       {domain.CompositorUnknown, nameXmonad},
-		nameHerbstluftwm: {domain.CompositorUnknown, nameHerbstluftwm},
-		nameSpectrwm:     {domain.CompositorUnknown, nameSpectrwm},
+		nameDwm:          {domain.Unknown, nameDwm},
+		nameQtile:        {domain.Unknown, nameQtile},
+		nameXmonad:       {domain.Unknown, nameXmonad},
+		nameHerbstluftwm: {domain.Unknown, nameHerbstluftwm},
+		nameSpectrwm:     {domain.Unknown, nameSpectrwm},
 	}
 }
 
@@ -233,16 +233,16 @@ func processNamesTableB() map[string]match {
 		tokenOpenbox:  {domain.CompositorOpenbox, nameOpenbox},
 		nameI3:        {domain.CompositorI3, nameI3},
 		nameAwesome:   {domain.CompositorAwesome, nameAwesome},
-		nameMuffin:    {domain.CompositorUnknown, nameMuffin},
-		"cosmic-comp": {domain.CompositorUnknown, nameCosmicComp},
+		nameMuffin:    {domain.Unknown, nameMuffin},
+		"cosmic-comp": {domain.Unknown, nameCosmicComp},
 	}
 }
 
 func processNamesTableC() map[string]match {
 	return map[string]match{
-		nameGala:    {domain.CompositorUnknown, nameGala},
-		"budgie-wm": {domain.CompositorUnknown, nameBudgieWM},
-		nameNiri:    {domain.CompositorUnknown, nameNiri},
+		nameGala:    {domain.Unknown, nameGala},
+		"budgie-wm": {domain.Unknown, nameBudgieWM},
+		nameNiri:    {domain.Unknown, nameNiri},
 	}
 }
 
@@ -258,16 +258,16 @@ func desktopCompositors(key domain.DesktopEnvironment) (match, bool) {
 
 func desktopCompositorsTable() map[domain.DesktopEnvironment]match {
 	return map[domain.DesktopEnvironment]match{
-		domain.DesktopUnknown:  {kind: domain.CompositorUnknown, name: noValue},
-		domain.DesktopLXQt:     {kind: domain.CompositorUnknown, name: noValue},
+		domain.Unknown:         {kind: domain.Unknown, name: noValue},
+		domain.DesktopLXQt:     {kind: domain.Unknown, name: noValue},
 		domain.DesktopGNOME:    {domain.CompositorMutter, nameMutter},
 		domain.DesktopKDE:      {domain.CompositorKWin, nameKWin},
 		domain.DesktopXFCE:     {domain.CompositorXfwm, nameXfwm4},
 		domain.DesktopMATE:     {domain.CompositorMarco, nameMarco},
 		domain.DesktopLXDE:     {domain.CompositorOpenbox, nameOpenbox},
-		domain.DesktopCinnamon: {domain.CompositorUnknown, nameMuffin},
-		domain.DesktopCOSMIC:   {domain.CompositorUnknown, nameCosmicComp},
-		domain.DesktopPantheon: {domain.CompositorUnknown, nameGala},
-		domain.DesktopBudgie:   {domain.CompositorUnknown, nameBudgieWM},
+		domain.DesktopCinnamon: {domain.Unknown, nameMuffin},
+		domain.DesktopCOSMIC:   {domain.Unknown, nameCosmicComp},
+		domain.DesktopPantheon: {domain.Unknown, nameGala},
+		domain.DesktopBudgie:   {domain.Unknown, nameBudgieWM},
 	}
 }

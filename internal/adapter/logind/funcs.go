@@ -26,7 +26,7 @@ func sessionAt(files string, bus port.Bus) Probe {
 	return func(ctx context.Context, env *domain.Env) (domain.SessionInfo, error) {
 		var info domain.SessionInfo
 
-		info.Type = domain.SessionTypeUnknown
+		info.Type = domain.Unknown
 
 		found := fromMirror(files, &info, sessionID(files, env)) || locate(ctx, &info, bus)
 
@@ -74,7 +74,7 @@ func locate(
 
 // known reports whether anything at all was learned about the session.
 func known(info *domain.SessionInfo) bool {
-	return info.Type != domain.SessionTypeUnknown || info.ID != noValue
+	return info.Type != domain.Unknown || info.ID != noValue
 }
 
 // sessionID resolves this process's session id: from the environment when it
@@ -225,7 +225,7 @@ func applyEnv(info *domain.SessionInfo, env *domain.Env) {
 
 // backfill supplies from the environment whatever logind left empty.
 func backfill(info *domain.SessionInfo, env *domain.Env) {
-	if info.Type == domain.SessionTypeUnknown {
+	if info.Type == domain.Unknown {
 		info.Type = normalizeType(env.SessionType)
 	}
 
@@ -346,7 +346,7 @@ func normalizeType(raw string) domain.SessionType {
 		return domain.SessionTypeMir
 	}
 
-	return domain.SessionTypeUnknown
+	return domain.Unknown
 }
 
 // structID pulls the leading string out of a D-Bus (string, objectpath) pair,

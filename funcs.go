@@ -230,9 +230,9 @@ func detectOn(ctx context.Context, cfg *core.Config, goos string) (out *Environm
 func elsewhere() *Environment {
 	result := new(Environment)
 
-	result.Display.Protocol = DisplayProtocolUnknown
-	result.Session.Type = SessionTypeUnknown
-	result.Desktop.Environment = DesktopUnknown
+	result.Display.Protocol = Unknown
+	result.Session.Type = Unknown
+	result.Desktop.Environment = Unknown
 	result.Headless = true
 
 	return result

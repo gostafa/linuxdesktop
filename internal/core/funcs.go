@@ -331,7 +331,7 @@ func newCollector(sig *domain.Signals) *collector {
 func collectedDisplay(gather *collector) domain.DisplayInfo {
 	env := &gather.sig.Env
 	info := domain.DisplayInfo{
-		Protocol:         domain.DisplayProtocolUnknown,
+		Protocol:         domain.Unknown,
 		WaylandDisplay:   env.WaylandDisplay,
 		X11Display:       env.Display,
 		X11Available:     gather.x11 != nil,

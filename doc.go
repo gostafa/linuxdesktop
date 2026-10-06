@@ -13,4 +13,10 @@
 //
 // Public result and configuration types belong to this package. Probe engines
 // and their models are implementation details kept under internal/.
+//
+// Unknown is the shared constant for unidentified session, display, desktop,
+// compositor, confidence, and detection method values. It replaces the former
+// type-specific unknown constants. Display protocols use the session constants
+// with an explicit conversion, such as DisplayProtocol(SessionTypeWayland) or
+// DisplayProtocol(SessionTypeX11).
 package linuxdesktop

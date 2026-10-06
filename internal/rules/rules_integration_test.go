@@ -16,7 +16,7 @@ func TestDesktopFallbacks(t *testing.T) {
 		env  domain.Env
 		want domain.DesktopEnvironment
 	}{
-		{domain.Env{}, domain.DesktopUnknown},
+		{domain.Env{}, domain.Unknown},
 		{domain.Env{CurrentDesktop: "unrecognized:GNOME"}, domain.DesktopGNOME},
 		{domain.Env{CurrentDesktop: "custom", KDEFullSession: "true"}, domain.DesktopKDE},
 		{domain.Env{KDEFullSession: "true"}, domain.DesktopKDE},
@@ -35,11 +35,11 @@ func TestProtocolFallbacks(t *testing.T) {
 		wl, x bool
 		want  domain.DisplayProtocol
 	}{
-		{domain.SessionTypeUnknown, true, true, domain.DisplayProtocolWayland},
-		{domain.SessionTypeUnknown, false, true, domain.DisplayProtocolX11},
-		{domain.SessionTypeWayland, false, false, domain.DisplayProtocolWayland},
-		{domain.SessionTypeX11, false, false, domain.DisplayProtocolX11},
-		{domain.SessionTypeTTY, false, false, domain.DisplayProtocolUnknown},
+		{domain.Unknown, true, true, domain.DisplayProtocol(domain.SessionTypeWayland)},
+		{domain.Unknown, false, true, domain.DisplayProtocol(domain.SessionTypeX11)},
+		{domain.SessionTypeWayland, false, false, domain.DisplayProtocol(domain.SessionTypeWayland)},
+		{domain.SessionTypeX11, false, false, domain.DisplayProtocol(domain.SessionTypeX11)},
+		{domain.SessionTypeTTY, false, false, domain.Unknown},
 	} {
 		if got := rules.Protocol(tc.kind, tc.wl, tc.x); got != tc.want {
 			t.Fatal(got)
@@ -55,7 +55,7 @@ func TestCompositorWithoutDesktopDefault(t *testing.T) {
 	t.Parallel()
 
 	for _, desktop := range []domain.DesktopEnvironment{
-		domain.DesktopUnknown,
+		domain.Unknown,
 		domain.DesktopLXQt,
 		domain.DesktopEnvironment("custom"),
 	} {

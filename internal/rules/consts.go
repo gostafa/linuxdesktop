@@ -5,7 +5,7 @@ package rules
 
 const (
 	// Names of compositors that have no CompositorKind constant. They are
-	// reported as CompositorUnknown with one of these in CompositorInfo.Name.
+	// reported as Unknown with one of these in CompositorInfo.Name.
 	nameMuffin     = "muffin"
 	nameCosmicComp = "cosmic-comp"
 	nameGala       = "gala"

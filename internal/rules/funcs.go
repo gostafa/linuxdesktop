@@ -12,7 +12,7 @@ import (
 // Desktop identifies the desktop environment from the XDG variables.
 func Desktop(env *domain.Env) domain.DesktopInfo {
 	info := domain.DesktopInfo{
-		Environment:     domain.DesktopUnknown,
+		Environment:     domain.Unknown,
 		CurrentDesktop:  env.CurrentDesktop,
 		SessionDesktop:  env.SessionDesktop,
 		DesktopSession:  env.DesktopSession,
@@ -59,16 +59,16 @@ func Protocol(
 ) domain.DisplayProtocol {
 	switch {
 	case waylandAvailable:
-		return domain.DisplayProtocolWayland
+		return domain.DisplayProtocol(domain.SessionTypeWayland)
 	case x11Available:
-		return domain.DisplayProtocolX11
+		return domain.DisplayProtocol(domain.SessionTypeX11)
 	case sessionType == domain.SessionTypeWayland:
-		return domain.DisplayProtocolWayland
+		return domain.DisplayProtocol(domain.SessionTypeWayland)
 	case sessionType == domain.SessionTypeX11:
-		return domain.DisplayProtocolX11
+		return domain.DisplayProtocol(domain.SessionTypeX11)
 	}
 
-	return domain.DisplayProtocolUnknown
+	return domain.Unknown
 }
 
 // Headless reports whether there is no display server to draw on.
@@ -151,9 +151,9 @@ func nameIfUnset(info *domain.DesktopInfo, name string) {
 // though the reachability of each protocol is still known.
 func unidentified(sig *domain.Signals) domain.CompositorInfo {
 	return domain.CompositorInfo{
-		Kind:       domain.CompositorUnknown,
-		Confidence: domain.ConfidenceUnknown,
-		DetectedBy: domain.DetectedUnknown,
+		Kind:       domain.Unknown,
+		Confidence: domain.Unknown,
+		DetectedBy: domain.Unknown,
 		Wayland:    sig.WaylandReachable,
 		X11:        sig.X11Reachable,
 		Name:       "",
@@ -228,7 +228,7 @@ func byWindowManager(sig *domain.Signals) (verdict, bool) {
 	}
 
 	// Unrecognized, but the manager did name itself, so keep what it said.
-	said := match{domain.CompositorUnknown, name}
+	said := match{domain.Unknown, name}
 
 	return verdict{said, domain.ConfidenceMedium, domain.DetectedX11EWMH}, true
 }
@@ -255,7 +255,7 @@ func byWlroots(sig *domain.Signals) (verdict, bool) {
 		return empty, false
 	}
 
-	family := match{domain.CompositorUnknown, nameWlroots}
+	family := match{domain.Unknown, nameWlroots}
 
 	return verdict{family, domain.ConfidenceLow, domain.DetectedWayland}, true
 }

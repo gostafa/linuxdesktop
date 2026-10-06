@@ -125,7 +125,7 @@ func TestBusAndEnvironment(t *testing.T) {
 	if err = applyBus(t.Context(), &info, fakeBus{err: failure}); !errors.Is(err, failure) {
 		t.Fatal(err)
 	}
-	info = domain.SessionInfo{Type: domain.SessionTypeUnknown}
+	info = domain.SessionInfo{Type: domain.Unknown}
 	applyEnv(
 		&info,
 		&domain.Env{

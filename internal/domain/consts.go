@@ -25,21 +25,18 @@ const (
 	SectionAll Section = SectionOS | SectionSession | SectionDisplay |
 		SectionDesktop | SectionCompositor | SectionGraphics | SectionPortal
 
-	// SessionTypeUnknown indicates an unidentified session type. The session
-	// constants mirror logind's TYPE= and $XDG_SESSION_TYPE.
-	SessionTypeUnknown SessionType = "unknown"
+	// Unknown indicates an unidentified session, display, desktop, compositor,
+	// confidence, or detection method. It is assignable to each identity type.
+	Unknown = "unknown"
+
+	// SessionTypeWayland and the other session constants mirror logind's TYPE=
+	// and $XDG_SESSION_TYPE.
 	SessionTypeWayland SessionType = "wayland"
 	SessionTypeX11     SessionType = "x11"
 	SessionTypeTTY     SessionType = "tty"
 	SessionTypeMir     SessionType = "mir"
 
-	// DisplayProtocolUnknown indicates an unidentified display protocol.
-	DisplayProtocolUnknown DisplayProtocol = DisplayProtocol(SessionTypeUnknown)
-	DisplayProtocolWayland DisplayProtocol = DisplayProtocol(SessionTypeWayland)
-	DisplayProtocolX11     DisplayProtocol = DisplayProtocol(SessionTypeX11)
-
-	// DesktopUnknown indicates an unidentified desktop environment.
-	DesktopUnknown  DesktopEnvironment = DesktopEnvironment(SessionTypeUnknown)
+	// DesktopGNOME and the other desktop constants identify recognized environments.
 	DesktopGNOME    DesktopEnvironment = "gnome"
 	DesktopKDE      DesktopEnvironment = "kde"
 	DesktopXFCE     DesktopEnvironment = "xfce"
@@ -51,10 +48,9 @@ const (
 	DesktopCOSMIC   DesktopEnvironment = "cosmic"
 	DesktopPantheon DesktopEnvironment = "pantheon"
 
-	// CompositorUnknown indicates an unrecognized compositor or window manager.
-	// Its raw name is preserved in
-	// CompositorInfo.Name, so no information is lost.
-	CompositorUnknown  CompositorKind = CompositorKind(SessionTypeUnknown)
+	// CompositorMutter and the other compositor constants identify recognized
+	// compositors or window managers. For Unknown, CompositorInfo.Name preserves
+	// the unrecognized raw name.
 	CompositorMutter   CompositorKind = "mutter"
 	CompositorKWin     CompositorKind = "kwin"
 	CompositorSway     CompositorKind = "sway"
@@ -69,15 +65,13 @@ const (
 	CompositorI3       CompositorKind = "i3"
 	CompositorAwesome  CompositorKind = "awesome"
 
-	// ConfidenceUnknown indicates that detection confidence is unavailable.
-	ConfidenceUnknown DetectionConfidence = DetectionConfidence(SessionTypeUnknown)
-	ConfidenceLow     DetectionConfidence = "low"
-	ConfidenceMedium  DetectionConfidence = "medium"
-	ConfidenceHigh    DetectionConfidence = "high"
+	// ConfidenceLow and the other confidence constants grade detection evidence.
+	ConfidenceLow    DetectionConfidence = "low"
+	ConfidenceMedium DetectionConfidence = "medium"
+	ConfidenceHigh   DetectionConfidence = "high"
 
-	// DetectedUnknown indicates an unidentified detection method. The methods
-	// are roughly ordered from cheapest to most invasive.
-	DetectedUnknown     DetectionMethod = DetectionMethod(SessionTypeUnknown)
+	// DetectedEnvironment and the other detection methods are roughly ordered
+	// from cheapest to most invasive.
 	DetectedEnvironment DetectionMethod = "environment"
 	DetectedLogind      DetectionMethod = "logind"
 	DetectedDBus        DetectionMethod = "dbus"
