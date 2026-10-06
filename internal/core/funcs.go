@@ -12,6 +12,7 @@ import (
 
 	"github.com/gostafa/linuxdesktop/internal/domain"
 	"github.com/gostafa/linuxdesktop/internal/port"
+	"github.com/gostafa/linuxdesktop/internal/probe"
 	"github.com/gostafa/linuxdesktop/internal/rules"
 )
 
@@ -68,12 +69,8 @@ func WithProcessScan() Option {
 // Detect runs the probes and merges their answers. The returned Environment is
 // never nil; the error reports non-fatal probe failures and can be ignored by
 // callers that only want the data.
-//
-//nolint:contextcheck,nilnil // Accept nil context and preserve partial probe results.
 func detect(ctx context.Context, eng *detector) (*domain.Environment, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx = probe.Default(ctx, context.Background)
 
 	if eng.cfg.Timeout > zero {
 		var cancel context.CancelFunc
@@ -88,7 +85,12 @@ func detect(ctx context.Context, eng *detector) (*domain.Environment, error) {
 	run(ctx, eng, gather)
 	finish(eng, gather)
 
-	return gather.out, errors.Join(gather.failed...)
+	return collectedValues[*domain.Environment](gather.out, gather.failed)
+}
+
+// collectedValues preserves partial results alongside non-fatal probe failures.
+func collectedValues[T any](value T, failed []error) (T, error) {
+	return value, errors.Join(failed...)
 }
 
 // finish is stage two: everything below is pure, with every fact collected.
@@ -278,12 +280,12 @@ func waylandStep(eng *detector) step {
 }
 
 func envProbe[P, T any](
-	probe P,
+	adapter P,
 	read func(P, context.Context, *domain.Env) (T, error),
 	target resultTarget[collector, T],
 ) probeFunc {
 	return func(ctx context.Context, gather *collector) error {
-		info, err := read(probe, ctx, &gather.sig.Env)
+		info, err := read(adapter, ctx, &gather.sig.Env)
 
 		return storeResult(gather, err, publication{
 			name: target.name, store: func() { *target.value(gather) = info },
@@ -292,12 +294,12 @@ func envProbe[P, T any](
 }
 
 func plainProbe[P, T any](
-	probe P,
+	adapter P,
 	read func(P, context.Context) (T, error),
 	target resultTarget[collector, T],
 ) probeFunc {
 	return func(ctx context.Context, gather *collector) error {
-		info, err := read(probe, ctx)
+		info, err := read(adapter, ctx)
 
 		return storeResult(gather, err, publication{
 			name: target.name, store: func() { *target.value(gather) = info },
@@ -465,12 +467,12 @@ func stackStep(eng *detector) step {
 }
 
 func pairedProbe[P, A, B any](
-	probe P,
+	adapter P,
 	read func(P, context.Context) (A, B, error),
 	target pairedTarget[collector, A, B],
 ) probeFunc {
 	return func(ctx context.Context, gather *collector) error {
-		left, right, err := read(probe, ctx)
+		left, right, err := read(adapter, ctx)
 
 		return storeResult(gather, err, publication{name: target.name, store: func() {
 			*target.first(gather) = left

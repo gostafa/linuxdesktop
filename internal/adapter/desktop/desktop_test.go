@@ -45,9 +45,9 @@ func (bus fakeBus) Property(
 	_ context.Context,
 	kind port.BusKind,
 	query *port.PropertyQuery,
-) (any, error) {
+) (port.PropertyValue, error) {
 	if kind != port.SessionBus || query.Name != shellVersion {
-		return nil, errors.New("invalid query")
+		return port.PropertyValue{}, errors.New("invalid query")
 	}
-	return bus.value, bus.err
+	return port.PropertyValue{Value: bus.value}, bus.err
 }

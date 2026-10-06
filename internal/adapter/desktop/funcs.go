@@ -59,7 +59,7 @@ func gnomeVersion(ctx context.Context, bus port.Bus) string {
 		return ""
 	}
 
-	s, ok := value.(string)
+	s, ok := value.Value.(string)
 	if !ok {
 		return ""
 	}

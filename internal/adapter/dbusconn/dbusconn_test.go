@@ -83,7 +83,7 @@ func TestBusOperations(t *testing.T) {
 				t.Fatal(text, textErr)
 			}
 		case dbus.Variant:
-			if valueErr != nil || value != "value" {
+			if valueErr != nil || value.Value != "value" {
 				t.Fatal(value, valueErr)
 			}
 		case map[string]dbus.Variant:

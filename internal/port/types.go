@@ -10,6 +10,12 @@ import (
 )
 
 type (
+	// PropertyValue carries the heterogeneous payload of a D-Bus property.
+	PropertyValue = struct {
+		// Value is the decoded property payload.
+		Value any
+	}
+
 	// BusKind selects one of the two D-Bus instances a desktop session has.
 	BusKind uint8
 
@@ -52,7 +58,7 @@ type (
 		// Introspect returns the raw introspection XML for an object path.
 		Introspect(ctx context.Context, k BusKind, object *Object) (string, error)
 		// Property reads a single property off an interface.
-		Property(ctx context.Context, k BusKind, query *PropertyQuery) (any, error)
+		Property(ctx context.Context, k BusKind, query *PropertyQuery) (PropertyValue, error)
 		// Properties reads every property on an interface in one round trip.
 		Properties(ctx context.Context, k BusKind, query *PropertyQuery) (map[string]any, error)
 		// Close releases any connections that were opened.

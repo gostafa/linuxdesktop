@@ -25,6 +25,7 @@ import (
 	"github.com/gostafa/linuxdesktop/internal/core"
 	"github.com/gostafa/linuxdesktop/internal/domain"
 	"github.com/gostafa/linuxdesktop/internal/port"
+	"github.com/gostafa/linuxdesktop/internal/probe"
 	"github.com/gostafa/linuxdesktop/internal/rules"
 )
 
@@ -196,15 +197,11 @@ func Detect() (*Environment, error) {
 }
 
 // DetectContext reports the desktop environment, honoring ctx and opts.
-//
-//nolint:contextcheck // Nil context selects the background context.
 func DetectContext(
 	ctx context.Context,
 	opts ...Option,
 ) (*Environment, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx = probe.Default(ctx, context.Background)
 
 	result, err := detectOn(ctx, newConfig(opts...), runtime.GOOS)
 

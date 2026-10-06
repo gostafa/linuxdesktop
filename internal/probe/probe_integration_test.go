@@ -11,6 +11,25 @@ import (
 	"github.com/gostafa/linuxdesktop/internal/probe"
 )
 
+func TestDefaultContext(t *testing.T) {
+	t.Parallel()
+	var empty context.Context
+	empty = probe.Default(empty, func() context.Context { return t.Context() })
+	if empty != t.Context() {
+		t.Fatal("nil context did not receive the default")
+	}
+	parent, cancel := context.WithCancel(t.Context())
+	ctx := parent
+	ctx = probe.Default(
+		ctx,
+		func() context.Context { t.Fatal("fallback called for non-nil parent"); return nil },
+	)
+	cancel()
+	if ctx != parent || !errors.Is(ctx.Err(), context.Canceled) {
+		t.Fatal("parent context or cancellation lost")
+	}
+}
+
 func TestDelegates(t *testing.T) {
 	t.Parallel()
 	failure := errors.New("probe failure")

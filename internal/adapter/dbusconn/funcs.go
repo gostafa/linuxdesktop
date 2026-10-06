@@ -10,13 +10,12 @@ import (
 
 	"github.com/godbus/dbus/v5"
 	"github.com/gostafa/linuxdesktop/internal/port"
+	"github.com/gostafa/linuxdesktop/internal/probe"
 )
 
 // New returns a Bus whose connections live no longer than base.
 func New(base context.Context) *Bus {
-	if base == nil {
-		base = context.Background() //nolint:contextcheck // Nil context permits an unbounded connection lifetime.
-	}
+	base = probe.Default(base, context.Background)
 
 	cache := new(connections[port.BusKind, *dbus.Conn])
 
@@ -98,19 +97,17 @@ func readIntrospection[C connection, O interface {
 }
 
 // Property reads a single property off an interface.
-//
-//nolint:ireturn // D-Bus properties have heterogeneous values required by the Bus port.
 func (bus *connectionBus[K, C, O, Q]) Property(
 	ctx context.Context,
 	kind K,
 	query Q,
-) (any, error) {
+) (struct{ Value any }, error) {
 	result, err := readProperty(ctx, selectConnection(bus.source, kind), query)
 	if err != nil {
-		return nil, fmt.Errorf(errReadProperty, err)
+		return struct{ Value any }{Value: nil}, fmt.Errorf(errReadProperty, err)
 	}
 
-	return result.Value(), nil
+	return struct{ Value any }{Value: result.Value()}, nil
 }
 
 func readProperty[C connection, Q interface {
