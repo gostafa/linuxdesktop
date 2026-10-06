@@ -679,12 +679,12 @@ linters:
   exclusions:
     rules:
       # Each package consolidates all data declarations into types.go.
-      - path: '(^|/)types\.go$'
+      - path: (^|/)types\.go$
         text: 'max-public-structs:'
         linters:
           - revive
     paths:
-      - ".*_test.go"
+      - .*_test.go
     generated: disable
     warn-unused: true
 
