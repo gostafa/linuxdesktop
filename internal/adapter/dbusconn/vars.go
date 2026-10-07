@@ -8,4 +8,9 @@ import (
 )
 
 // ErrBusKind reports a bus selector outside the supported range.
-var ErrBusKind = errors.New("linuxdesktop: unknown bus kind")
+var (
+	ErrBusKind = errors.New("linuxdesktop: unknown bus kind")
+	// ErrClosed reports acquisition after the bus has been shut down.
+	ErrClosed       = errors.New("linuxdesktop: bus closed")
+	errNoConnection = errors.New("dbusconn: opener returned no connection")
+)

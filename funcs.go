@@ -27,6 +27,7 @@ import (
 	"github.com/gostafa/linuxdesktop/internal/port"
 	"github.com/gostafa/linuxdesktop/internal/probe"
 	"github.com/gostafa/linuxdesktop/internal/rules"
+	"github.com/gostafa/linuxdesktop/internal/schema"
 )
 
 // newConfig applies public options before crossing the internal boundary.
@@ -34,21 +35,23 @@ func newConfig(opts ...Option) *core.Config {
 	cfg := publicConfig(opts)
 
 	return &core.Config{
-		Timeout:      cfg.Timeout,
-		ProbeTimeout: cfg.ProbeTimeout,
-		Sections:     domain.Section(cfg.Sections),
-		NativeGL:     cfg.NativeGL,
-		ProcessScan:  cfg.ProcessScan,
+		ConnectionRetry: schema.RetryPolicy(cfg.ConnectionRetry),
+		Timeout:         cfg.Timeout,
+		ProbeTimeout:    cfg.ProbeTimeout,
+		Sections:        domain.Section(cfg.Sections),
+		NativeGL:        cfg.NativeGL,
+		ProcessScan:     cfg.ProcessScan,
 	}
 }
 
 func publicConfig(opts []Option) Config {
 	cfg := Config{
-		Timeout:      DefaultTimeout,
-		ProbeTimeout: DefaultProbeTimeout,
-		Sections:     SectionAll,
-		NativeGL:     false,
-		ProcessScan:  false,
+		ConnectionRetry: RetryPolicy(schema.DefaultRetryPolicy()),
+		Timeout:         DefaultTimeout,
+		ProbeTimeout:    DefaultProbeTimeout,
+		Sections:        SectionAll,
+		NativeGL:        false,
+		ProcessScan:     false,
 	}
 
 	for i := range opts {
@@ -213,7 +216,42 @@ func detectOn(ctx context.Context, cfg *core.Config, goos string) (out *Environm
 		return detectionValues[*Environment](elsewhere(), ErrNotLinux, "platform")
 	}
 
-	bus := dbusconn.New(ctx)
+	result, err := detectLinux(ctx, cfg)
+
+	return detectionValues[*Environment](result, err, "platform probes")
+}
+
+func detectLinux(ctx context.Context, cfg *core.Config) (*Environment, error) {
+	if !schema.ValidRetryPolicy(cfg.ConnectionRetry) {
+		return detectionValues[*Environment](
+			new(Environment),
+			ErrInvalidRetryPolicy,
+			"retry configuration",
+		)
+	}
+
+	ctx, cancel := detectionContext(ctx, cfg.Timeout)
+	defer cancel()
+
+	result, err := runDetection(ctx, cfg)
+
+	return detectionValues[*Environment](result, err, "run")
+}
+
+//nolint:ireturn // Preserve standard context cancellation semantics.
+func detectionContext(
+	ctx context.Context,
+	timeout time.Duration,
+) (context.Context, context.CancelFunc) {
+	if timeout > zero {
+		return context.WithTimeout(ctx, timeout)
+	}
+
+	return context.WithCancel(ctx)
+}
+
+func runDetection(ctx context.Context, cfg *core.Config) (out *Environment, err error) {
+	bus := dbusconn.NewConfigured(ctx, cfg.ConnectionRetry, cfg.ProbeTimeout)
 
 	defer func() { err = errors.Join(err, bus.Close()) }()
 
@@ -323,6 +361,13 @@ func WithTimeout(d time.Duration) Option { return func(c *Config) { c.Timeout = 
 // WithProbeTimeout bounds each individual probe, so one unresponsive server
 // cannot consume the whole budget. The default is DefaultProbeTimeout.
 func WithProbeTimeout(d time.Duration) Option { return func(c *Config) { c.ProbeTimeout = d } }
+
+// WithConnectionRetry sets the D-Bus initialization policy. The default is three
+// attempts with delays starting at 25ms and capped at 100ms before jitter.
+// MaxAttempts of one disables retries. Invalid policies return ErrInvalidRetryPolicy.
+func WithConnectionRetry(policy RetryPolicy) Option {
+	return func(c *Config) { c.ConnectionRetry = policy }
+}
 
 // WithSections selects which parts of the Environment to populate. Probes for
 // unselected sections never run.

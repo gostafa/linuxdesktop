@@ -18,6 +18,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 	"github.com/gostafa/linuxdesktop/internal/port"
+	"github.com/gostafa/linuxdesktop/internal/schema"
 )
 
 type fakeObject struct {
@@ -51,7 +52,7 @@ func TestBusOperations(t *testing.T) {
 	} {
 		bus := connectionBus[port.BusKind, fakeConnection, *port.Object, *port.PropertyQuery]{
 			source: connectionSource[port.BusKind, fakeConnection]{
-				Acquire: func(port.BusKind) (fakeConnection, error) {
+				Acquire: func(context.Context, port.BusKind) (fakeConnection, error) {
 					return fakeConnection{
 						fakeObject{call: &dbus.Call{Body: tc.body, Err: tc.err}},
 					}, tc.connectErr
@@ -110,11 +111,10 @@ func TestConnectionLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	cache := connections[port.BusKind, *dbus.Conn]{
-		open: func(context.Context, port.BusKind) (*dbus.Conn, error) { calls++; return conn, nil },
-	}
+	cache := newConnections(t.Context(), schema.DefaultRetryPolicy(), time.Second,
+		func(context.Context, port.BusKind) (*dbus.Conn, error) { calls++; return conn, nil })
 	for range 2 {
-		got, err := connect(t.Context(), &cache, port.SessionBus)
+		got, err := connect(t.Context(), cache, port.SessionBus)
 		if err != nil || got != conn {
 			t.Fatal(got, err)
 		}
@@ -122,13 +122,13 @@ func TestConnectionLifetime(t *testing.T) {
 	if calls != 1 {
 		t.Fatal("connection not cached")
 	}
-	if _, err = connect(t.Context(), &cache, port.BusKind(255)); err == nil {
+	if _, err = connect(t.Context(), cache, port.BusKind(255)); err == nil {
 		t.Fatal("unknown bus accepted")
 	}
-	if err = closeConnections(&cache); !errors.Is(err, failure) || cache.conns[0] != nil {
+	if err = closeConnections(cache); !errors.Is(err, failure) || cache.conns[0] != nil {
 		t.Fatal(err)
 	}
-	if err = closeConnections(&cache); err != nil {
+	if err = closeConnections(cache); err != nil {
 		t.Fatal(err)
 	}
 	if err = New(t.Context()).Close(); err != nil {

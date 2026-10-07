@@ -11,7 +11,7 @@ import (
 )
 
 // Vulkan asks the loader for its API version.
-func Vulkan() (string, bool) { return detectVulkan(systemLibrary{}) }
+func Vulkan() (string, bool) { return cachedVulkan(vulkanBindings) }
 
 func detectVulkan(loader library) (version string, ok bool) {
 	// purego may panic on an unexpected native symbol signature.
@@ -43,6 +43,14 @@ func enumerateVersion(loader library, symbol uintptr) (string, bool) {
 
 	loader.register(&enumerate, symbol)
 
+	return queryVulkan(enumerate)
+}
+
+func queryVulkan(enumerate func(*uint32) int32) (string, bool) {
+	if enumerate == nil {
+		return vkBaseVersion, true
+	}
+
 	var packed uint32
 
 	if enumerate(&packed) != zero {
@@ -53,7 +61,7 @@ func enumerateVersion(loader library, symbol uintptr) (string, bool) {
 }
 
 // OpenGL initializes EGL and reads renderer details through a surfaceless context.
-func OpenGL() (domain.OpenGLInfo, bool) { return detectOpenGL(systemLibrary{}) }
+func OpenGL() (domain.OpenGLInfo, bool) { return cachedOpenGL(eglBindingsCache) }
 
 func detectOpenGL(loader library) (info domain.OpenGLInfo, ok bool) {
 	defer func() {
@@ -78,15 +86,19 @@ func populateGL(info *domain.OpenGLInfo, loader library) bool {
 		return false
 	}
 
-	display, initialized := initializeDisplay(&egl)
+	return populateBoundGL(info, &egl)
+}
+
+func populateBoundGL(info *domain.OpenGLInfo, egl *eglFuncs) bool {
+	display, initialized := initializeDisplay(egl)
 	if !initialized {
 		return false
 	}
 
 	defer egl.terminate(display)
 
-	*info = displayInfo(&egl, display)
-	mergeCurrent(info, &egl, display)
+	*info = displayInfo(egl, display)
+	mergeCurrent(info, egl, display)
 
 	return true
 }
@@ -251,6 +263,16 @@ func eglBindings(loader library) (egl eglFuncs, ok bool) {
 		return egl, false
 	}
 
+	defer func() {
+		releaseFailedBinding(loader, lib, ok)
+	}()
+
+	return boundEGL(loader, lib), true
+}
+
+func boundEGL(loader library, lib uintptr) eglFuncs {
+	egl := new(eglFuncs)
+
 	egl.bindString = func(address uintptr) func(uint32) string {
 		var getString func(uint32) string
 
@@ -258,9 +280,9 @@ func eglBindings(loader library) (egl eglFuncs, ok bool) {
 
 		return getString
 	}
-	bindEGL(&egl, loader, lib)
+	bindEGL(egl, loader, lib)
 
-	return egl, true
+	return *egl
 }
 
 func (systemLibrary) open(name string, flags int) (uintptr, bool) {
@@ -280,6 +302,17 @@ func (systemLibrary) symbol(lib uintptr, name string) uintptr {
 
 func (systemLibrary) register(target any, address uintptr) {
 	purego.RegisterFunc(target, address)
+}
+
+func (systemLibrary) release(handle uintptr) {
+	//nolint:errcheck,gosec // Binding failure is already handled as unavailable; dlclose has no actionable recovery.
+	purego.Dlclose(handle)
+}
+
+func releaseLibrary(loader library, handle uintptr) {
+	if closer, ok := loader.(interface{ release(handle uintptr) }); ok {
+		closer.release(handle)
+	}
 }
 
 func bindEGL(egl *eglFuncs, loader library, lib uintptr) {

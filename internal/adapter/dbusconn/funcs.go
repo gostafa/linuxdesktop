@@ -7,22 +7,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/gostafa/linuxdesktop/internal/port"
 	"github.com/gostafa/linuxdesktop/internal/probe"
+	"github.com/gostafa/linuxdesktop/internal/schema"
 )
 
 // New returns a Bus whose connections live no longer than base.
 func New(base context.Context) *Bus {
-	base = probe.Default(base, context.Background)
+	return NewConfigured(base, schema.DefaultRetryPolicy(), defaultInitializationTimeout)
+}
 
-	cache := new(connections[port.BusKind, *dbus.Conn])
-
-	cache.open = openConnection
+// NewConfigured creates run-owned connections with a shared initialization budget.
+func NewConfigured(base context.Context, policy schema.RetryPolicy, timeout time.Duration) *Bus {
+	cache := newConnections(
+		probe.Default(base, context.Background),
+		policy,
+		timeout,
+		openConnection,
+	)
 
 	return &Bus{source: connectionSource[port.BusKind, *dbus.Conn]{
-		Acquire: func(kind port.BusKind) (*dbus.Conn, error) { return connect(base, cache, kind) },
+		Acquire: func(ctx context.Context, kind port.BusKind) (*dbus.Conn, error) { return connect(ctx, cache, kind) },
 		Release: func() error { return closeConnections(cache) },
 	}}
 }
@@ -33,7 +41,7 @@ func (bus *connectionBus[K, C, O, Q]) HasOwner(
 	kind K,
 	name string,
 ) (bool, error) {
-	result, err := checkOwner(ctx, selectConnection(bus.source, kind), name)
+	result, err := checkOwner(ctx, selectConnection(ctx, bus.source, kind), name)
 	if err != nil {
 		return result, fmt.Errorf("dbusconn: owner query: %w", err)
 	}
@@ -69,7 +77,7 @@ func (bus *connectionBus[K, C, O, Q]) Introspect(
 	kind K,
 	object O,
 ) (string, error) {
-	result, err := readIntrospection(ctx, selectConnection(bus.source, kind), object)
+	result, err := readIntrospection(ctx, selectConnection(ctx, bus.source, kind), object)
 
 	return result, errors.Join(err)
 }
@@ -102,7 +110,7 @@ func (bus *connectionBus[K, C, O, Q]) Property(
 	kind K,
 	query Q,
 ) (struct{ Value any }, error) {
-	result, err := readProperty(ctx, selectConnection(bus.source, kind), query)
+	result, err := readProperty(ctx, selectConnection(ctx, bus.source, kind), query)
 	if err != nil {
 		return struct{ Value any }{Value: nil}, fmt.Errorf(errReadProperty, err)
 	}
@@ -139,7 +147,7 @@ func (bus *connectionBus[K, C, O, Q]) Properties(
 	kind K,
 	query Q,
 ) (map[string]any, error) {
-	result, err := readProperties(ctx, selectConnection(bus.source, kind), query)
+	result, err := readProperties(ctx, selectConnection(ctx, bus.source, kind), query)
 	if err != nil {
 		return nil, fmt.Errorf(errReadProperties, err)
 	}
@@ -180,46 +188,6 @@ func variantValues(raw map[string]dbus.Variant) map[string]any {
 	return out
 }
 
-// Close releases whichever connections were actually opened.
-func closeConnections(cache *connections[port.BusKind, *dbus.Conn]) error {
-	errs := make([]error, noEntries, len(cache.conns))
-
-	for i := range cache.conns {
-		if cache.conns[i] == nil {
-			continue
-		}
-
-		errs = append(errs, cache.conns[i].Close())
-		cache.conns[i] = nil
-	}
-
-	return errors.Join(errs...)
-}
-
-// conn establishes a bus on first use and caches the outcome, including the
-// failure. A machine without a session bus should pay for exactly one failed
-// connect attempt, not one per probe.
-func connect(
-	base context.Context,
-	cache *connections[port.BusKind, *dbus.Conn],
-	kind port.BusKind,
-) (*dbus.Conn, error) {
-	i := int(kind)
-	if i >= len(cache.conns) {
-		return nil, ErrBusKind
-	}
-
-	cache.once[i].Do(func() {
-		cache.conns[i], cache.errs[i] = cache.open(base, kind)
-	})
-
-	if cache.errs[i] != nil {
-		return nil, fmt.Errorf("dbusconn: cached connection: %w", cache.errs[i])
-	}
-
-	return cache.conns[i], nil
-}
-
 func openConnection(base context.Context, kind port.BusKind) (*dbus.Conn, error) {
 	opt := dbus.WithContext(base)
 	connect := dbus.ConnectSessionBus
@@ -251,16 +219,19 @@ func releaseConnection(release func() error) error {
 }
 
 // selectConnection binds a bus kind for operations that only need a connection provider.
-func selectConnection[K, C any](
-	source interface{ Get(kind K) (C, error) },
+func selectConnection[K, Value any](
+	ctx context.Context,
+	source interface {
+		Get(ctx context.Context, kind K) (Value, error)
+	},
 	kind K,
-) func() (C, error) {
-	return func() (C, error) { return source.Get(kind) }
+) func() (Value, error) {
+	return func() (Value, error) { return source.Get(ctx, kind) }
 }
 
 // Get selects or opens the connection for kind.
-func (source connectionSource[K, C]) Get(kind K) (C, error) {
-	result, err := source.Acquire(kind)
+func (source connectionSource[K, C]) Get(ctx context.Context, kind K) (C, error) {
+	result, err := source.Acquire(ctx, kind)
 
 	return result, errors.Join(err)
 }

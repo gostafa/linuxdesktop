@@ -14,13 +14,16 @@ import (
 )
 
 type fakeLibrary struct {
-	loaded    bool
-	functions map[string]any
-	names     []string
-	bindPanic bool
+	loaded               bool
+	functions            map[string]any
+	names                []string
+	bindPanic            bool
+	opens, binds, closes int
 }
 
-func (f *fakeLibrary) open(string, int) (uintptr, bool) { return 7, f.loaded }
+func (f *fakeLibrary) open(string, int) (uintptr, bool) { f.opens++; return 7, f.loaded }
+
+func (f *fakeLibrary) release(uintptr) { f.closes++ }
 
 func (f *fakeLibrary) symbol(_ uintptr, name string) uintptr {
 	if f.functions[name] == nil {
@@ -31,6 +34,7 @@ func (f *fakeLibrary) symbol(_ uintptr, name string) uintptr {
 }
 
 func (f *fakeLibrary) register(target any, address uintptr) {
+	f.binds++
 	if f.bindPanic {
 		panic("invalid signature")
 	}

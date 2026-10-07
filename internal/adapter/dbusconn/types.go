@@ -6,9 +6,12 @@ package dbusconn
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/gostafa/linuxdesktop/internal/port"
+	"github.com/gostafa/linuxdesktop/internal/schema"
+	"github.com/gostafa/singleton"
 )
 
 type (
@@ -27,7 +30,7 @@ type (
 		PropertyAddress() port.PropertyAddress
 	}] struct {
 		source interface {
-			Get(kind K) (C, error)
+			Get(ctx context.Context, kind K) (C, error)
 			Shutdown() error
 		}
 	}
@@ -35,16 +38,26 @@ type (
 	// connectionSource supplies connection acquisition and release independently of bus operations.
 	connectionSource[K, C any] struct {
 		// Acquire selects or opens a connection.
-		Acquire func(K) (C, error)
+		Acquire func(context.Context, K) (C, error)
 		// Release closes the connections owned by the source.
 		Release func() error
 	}
 
 	// connections caches the result of opening each private connection once.
-	connections[K, C any] struct {
-		open  func(context.Context, K) (C, error)
-		errs  [2]error
-		conns [2]C
-		once  [2]sync.Once
+	connections = connectionCache[port.BusKind, *dbus.Conn]
+
+	// connectionCache binds lazy initialization to an explicitly owned lifetime.
+	//nolint:reusability // The owning cache combines generic resources with concrete synchronization and retry policy.
+	connectionCache[K, C any] struct {
+		//nolint:containedctx // Private connections share the owning run's lifetime.
+		base      context.Context
+		providers [2]*singleton.Provider[C]
+		conns     [2]C
+		open      func(context.Context, K) (C, error)
+		cancel    context.CancelFunc
+		policy    schema.RetryPolicy
+		timeout   time.Duration
+		lock      sync.Mutex
+		closed    bool
 	}
 )

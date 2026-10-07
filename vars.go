@@ -43,6 +43,9 @@ var (
 	// unconditionally and branch on the result rather than on the build tag.
 	ErrNotLinux = errors.New("linuxdesktop: not running on Linux")
 
+	// ErrInvalidRetryPolicy reports invalid D-Bus connection retry settings.
+	ErrInvalidRetryPolicy = errors.New("linuxdesktop: invalid connection retry policy")
+
 	// compile-time assertion that the exported defaults stay durations.
 	_ time.Duration = DefaultTimeout
 )

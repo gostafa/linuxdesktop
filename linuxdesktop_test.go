@@ -89,7 +89,8 @@ func TestConfig(t *testing.T) {
 		WithSections(SectionOS|SectionGraphics), WithOpenGL(), WithProcessScan(),
 	)
 	want := core.Config{
-		Timeout: 4 * time.Second, ProbeTimeout: time.Second,
+		ConnectionRetry: defaults.ConnectionRetry,
+		Timeout:         4 * time.Second, ProbeTimeout: time.Second,
 		Sections: domain.SectionOS | domain.SectionGraphics, NativeGL: true, ProcessScan: true,
 	}
 	if *got != want {

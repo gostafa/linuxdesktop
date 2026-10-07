@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gostafa/linuxdesktop/internal/domain"
+	"github.com/gostafa/linuxdesktop/internal/schema"
 )
 
 const (
@@ -35,10 +36,11 @@ const (
 // DefaultConfig is the configuration used when the caller supplies no options.
 func DefaultConfig() Config {
 	return Config{
-		Timeout:      DefaultTimeout,
-		ProbeTimeout: DefaultProbeTimeout,
-		Sections:     domain.SectionAll,
-		NativeGL:     false,
-		ProcessScan:  false,
+		ConnectionRetry: schema.DefaultRetryPolicy(),
+		Timeout:         DefaultTimeout,
+		ProbeTimeout:    DefaultProbeTimeout,
+		Sections:        domain.SectionAll,
+		NativeGL:        false,
+		ProcessScan:     false,
 	}
 }

@@ -111,6 +111,7 @@ quick-start example.
 | `WithSections(sections)` | Select which result sections to populate | `SectionAll` |
 | `WithTimeout(duration)` | Bound the whole detection run | 2 seconds |
 | `WithProbeTimeout(duration)` | Bound each individual probe | 500 milliseconds |
+| `WithConnectionRetry(policy)` | Configure D-Bus connection initialization | 3 attempts; 25 ms initial and 100 ms maximum interval |
 | `WithOpenGL()` | Enable native graphics queries for driver details | Disabled |
 | `WithProcessScan()` | Enable the `/proc` fallback for compositor identification | Disabled |
 
@@ -119,10 +120,42 @@ Available sections are `SectionOS`, `SectionSession`, `SectionDisplay`,
 Unselected sections remain unpopulated. Passing `WithSections(0)` selects all
 sections. Options apply in order, so a later option can override an earlier one.
 
+D-Bus connections are shared by probes within each detection run and closed when
+the run finishes. Transient transport failures are retried with exponential
+delays (multiplier 2 and ±20% jitter), within the run and probe timeout budgets.
+Missing sockets, invalid addresses, and authentication or permission failures
+fail immediately. Each probe's context bounds its own wait without cancelling
+another probe's shared initialization. The final connection outcome is cached
+for that run.
+
+For custom retry settings:
+
+```go
+env, err := linuxdesktop.DetectContext(ctx,
+	linuxdesktop.WithConnectionRetry(linuxdesktop.RetryPolicy{
+		MaxAttempts:     3,
+		InitialInterval: 25 * time.Millisecond,
+		MaxInterval:     100 * time.Millisecond,
+	}),
+)
+```
+
+`MaxAttempts` includes the first attempt; set it to 1 to disable retries. Attempts
+must be positive, the initial interval must be positive, and the maximum interval
+must be at least the initial interval. Invalid settings return a non-nil empty
+environment and an error matching `ErrInvalidRetryPolicy` before Linux probes run.
+
 To request live graphics details, include `SectionGraphics` and add
 `WithOpenGL()`. This initializes the graphics stack and can cost more than the
 default filesystem probe. A compositor identified by the process-scan fallback
 is reported with `ConfidenceLow`.
+
+Successful EGL and Vulkan library handles and static function bindings are
+reused for the process lifetime. Graphics values and EGL contexts are queried
+fresh on each native probe; failed library loads can be retried on a later call.
+EGL probe lifecycles are serialized to avoid overlapping initialization and
+termination of a shared display. A native driver call already in progress cannot
+be interrupted by the Go context.
 
 ## Results and convenience helpers
 

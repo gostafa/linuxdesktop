@@ -8,6 +8,16 @@ import (
 )
 
 type (
+	// RetryPolicy controls the bounded initialization of a D-Bus connection.
+	RetryPolicy struct {
+		// MaxAttempts counts the first attempt; one disables retries.
+		MaxAttempts uint
+		// InitialInterval is the initial delay between failed attempts.
+		InitialInterval time.Duration
+		// MaxInterval caps the nominal delay before jitter.
+		MaxInterval time.Duration
+	}
+
 	// Environment is the shared Environment layout, parameterized by its component types.
 	Environment[
 		OSType,
@@ -94,16 +104,12 @@ type (
 
 	// Config is the shared Config layout, parameterized by its component types.
 	Config[SectionsType any] = struct {
-		// Sections selects the environment sections to detect.
-		Sections SectionsType
-		// Timeout bounds the entire detection run.
-		Timeout time.Duration
-		// ProbeTimeout bounds each individual probe.
-		ProbeTimeout time.Duration
-		// NativeGL enables native graphics library probes.
-		NativeGL bool
-		// ProcessScan enables process-based desktop detection.
-		ProcessScan bool
+		Sections        SectionsType
+		ConnectionRetry RetryPolicy
+		Timeout         time.Duration
+		ProbeTimeout    time.Duration
+		NativeGL        bool
+		ProcessScan     bool
 	}
 
 	// DesktopInfo is the shared DesktopInfo layout, parameterized by its component types.

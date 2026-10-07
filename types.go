@@ -8,6 +8,17 @@ import (
 )
 
 type (
+	// RetryPolicy configures D-Bus connection attempts and exponential retry delays.
+	// Delays have a multiplier of two and jitter of plus or minus twenty percent.
+	RetryPolicy struct {
+		// MaxAttempts counts the first attempt; one disables retries.
+		MaxAttempts uint
+		// InitialInterval is the initial delay between failed attempts.
+		InitialInterval time.Duration
+		// MaxInterval caps the nominal delay before jitter.
+		MaxInterval time.Duration
+	}
+
 	// Section selects which parts of an Environment to populate. Sections are
 	// a bitmask so a caller can pay only for what it reads.
 	Section uint16
@@ -36,17 +47,14 @@ type (
 	CompositorInfo = CompositorInfoData[CompositorKind, DetectionConfidence, DetectionMethod]
 
 	// ConfigData is the shared ConfigData layout, parameterized by its component types.
+	//nolint:reusability // Public retry settings have fixed count and duration types beside the generic section mask.
 	ConfigData[SectionsType any] struct {
-		// Sections selects the environment sections to detect.
-		Sections SectionsType
-		// Timeout bounds the entire detection run.
-		Timeout time.Duration
-		// ProbeTimeout bounds each individual probe.
-		ProbeTimeout time.Duration
-		// NativeGL enables native graphics library probes.
-		NativeGL bool
-		// ProcessScan enables process-based desktop detection.
-		ProcessScan bool
+		Sections        SectionsType
+		ConnectionRetry RetryPolicy
+		Timeout         time.Duration
+		ProbeTimeout    time.Duration
+		NativeGL        bool
+		ProcessScan     bool
 	}
 
 	// EnvironmentData is the shared EnvironmentData layout, parameterized by its component types.
