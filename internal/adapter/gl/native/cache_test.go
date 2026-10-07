@@ -157,6 +157,24 @@ func TestCachedVulkanFallbackAndPanic(t *testing.T) {
 	}
 }
 
+func TestCachedVulkanUnavailableRetries(t *testing.T) {
+	t.Parallel()
+	loader := &fakeLibrary{functions: map[string]any{}}
+	cache := newBindingCache(func() (vulkanFuncs, bool) { return loadVulkan(loader) })
+	if got, ok := cachedVulkan(cache); ok || got != "" {
+		t.Fatal("unavailable library succeeded", got, ok)
+	}
+	loader.loaded = true
+	for range 2 {
+		if got, ok := cachedVulkan(cache); !ok || got != vkBaseVersion {
+			t.Fatal("Vulkan did not recover", got, ok)
+		}
+	}
+	if loader.opens != 2 {
+		t.Fatal("successful binding was not cached", loader.opens)
+	}
+}
+
 func TestCachedOpenGLUnavailableAndPanic(t *testing.T) {
 	t.Parallel()
 	cache := newBindingCache(func() (eglFuncs, bool) { return eglFuncs{}, false })

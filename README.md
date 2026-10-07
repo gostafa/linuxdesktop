@@ -1,7 +1,8 @@
 # linuxdesktop
 
 
-[![LICENSE](https://img.shields.io/github/license/gostafa/linuxdesktop)](/LICENSE) [![codecov](https://codecov.io/gh/gostafa/linuxdesktop/graph/badge.svg)](https://codecov.io/gh/gostafa/linuxdesktop) [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/gostafa/linuxdesktop?utm_source=badge)
+[![LICENSE](https://img.shields.io/github/license/gostafa/linuxdesktop)](/LICENSE) [![codecov](https://codecov.io/gh/gostafa/linuxdesktop/graph/badge.svg)](https://codecov.io/gh/gostafa/linuxdesktop) [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/gostafa/linuxdesktop?utm_source=badge) [![Go Reference](https://pkg.go.dev/badge/github.com/gostafa/linuxdesktop)](https://pkg.go.dev/github.com/gostafa/linuxdesktop)
+
 
 A Go library for detecting the Linux desktop environment, login session, display
 servers, compositor, GPUs, graphics stack, and desktop portal capabilities.
